@@ -65,6 +65,7 @@ jobs:
           script: |
             set -e
             cd ${{ secrets.DEPLOY_PATH }}
+            git pull
             docker compose pull bot
             docker compose up -d bot
             docker image prune -f
