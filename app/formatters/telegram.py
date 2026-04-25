@@ -64,12 +64,13 @@ def render_tweet_html(tweet: TweetData, *, limit: int = MESSAGE_LIMIT) -> str:
 
 def _author_html(tweet: TweetData) -> str:
     label = f"{tweet.author_name} (@{tweet.author_username})"
-    return f'<a href="{escape(tweet.author_url, quote=True)}">{escape(label)}</a>'
+    return f'🐦 <a href="{escape(tweet.author_url, quote=True)}">{escape(label)}</a>'
 
 
 def _related_title_html(tweet: TweetData, *, quoted: bool) -> str:
-    label = "Цитируемый пост" if quoted else "Родительский пост"
-    return f'<a href="{escape(tweet.url, quote=True)}">{label}</a>:'
+    if quoted:
+        return f'💬 <a href="{escape(tweet.url, quote=True)}">Цитируемый пост</a>:'
+    return f'↩️ <a href="{escape(tweet.url, quote=True)}">Родительский пост</a>:'
 
 
 def _related_html(tweet: TweetData | None) -> str | None:
