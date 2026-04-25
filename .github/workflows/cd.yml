@@ -19,6 +19,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
           script: |
+            set -e
             cd ${{ secrets.DEPLOY_PATH }}
             git pull
             docker compose up -d --build
