@@ -20,4 +20,7 @@ def append_original_link(content: str, url: str, *, limit: int) -> str:
     link = "\n\n" + original_post_link_html(url)
     if len(content) + len(link) <= limit:
         return content + link
-    return content
+    available = limit - len(link)
+    if available <= 0:
+        return content[:limit]
+    return content[:available] + link

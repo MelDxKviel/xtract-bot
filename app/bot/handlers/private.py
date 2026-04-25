@@ -168,6 +168,7 @@ async def _send_media_fallback(
     fallback_text: str,
 ) -> None:
     sent_caption = False
+    dropped_items = 0
     for item in media:
         item_caption = caption if not sent_caption else None
         try:
@@ -190,10 +191,16 @@ async def _send_media_fallback(
                 continue
             except TelegramBadRequest:
                 pass
+        dropped_items += 1
     if not sent_caption:
         await message.answer(
             fallback_text,
             parse_mode=ParseMode.HTML,
+            link_preview_options=DISABLED_LINK_PREVIEW,
+        )
+    if dropped_items:
+        await message.answer(
+            f"⚠️ Не удалось отправить часть медиа ({dropped_items}).",
             link_preview_options=DISABLED_LINK_PREVIEW,
         )
 
