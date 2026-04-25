@@ -32,8 +32,8 @@ uv run alembic upgrade head
 # Run bot locally (requires .env)
 uv run python -m app.main
 
-# Docker
-docker compose up --build
+# Docker (local: builds from source)
+docker compose -f docker-compose.local.yml up --build
 ```
 
 CI runs `ruff check .`, `ruff format --check .`, and `pytest` on every PR.
