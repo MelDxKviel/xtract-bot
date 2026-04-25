@@ -7,7 +7,6 @@ from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import (
     ChosenInlineResult,
-    InlineKeyboardMarkup,
     InlineQuery,
     InlineQueryResultArticle,
     InputMediaAnimation,
@@ -16,8 +15,12 @@ from aiogram.types import (
     InputTextMessageContent,
 )
 
-from app.bot.ui import DISABLED_LINK_PREVIEW, original_post_button
-from app.formatters.telegram import CAPTION_LIMIT
+from app.bot.ui import (
+    DISABLED_LINK_PREVIEW,
+    append_original_link,
+    original_post_button,
+)
+from app.formatters.telegram import CAPTION_LIMIT, MESSAGE_LIMIT
 from app.providers.base import TweetMedia
 from app.services import TweetShareService
 from app.utils.urls import extract_first_tweet_url
@@ -101,21 +104,17 @@ async def chosen_inline_result(
 
     original_url = share.tweet.url if share.tweet is not None else parsed.normalized_url
     if share.post.media:
+        caption = _inline_caption(share.post.caption_html, original_url, len(share.post.media))
         await _safe_edit_media(
             bot,
             result.inline_message_id,
             share.post.media[0],
-            caption=_inline_caption(share.post.caption_html, len(share.post.media)),
-            reply_markup=original_post_button(original_url),
+            caption=caption,
         )
         return
 
-    await _safe_edit(
-        bot,
-        result.inline_message_id,
-        share.post.html,
-        reply_markup=original_post_button(original_url),
-    )
+    text = append_original_link(share.post.html, original_url, limit=MESSAGE_LIMIT)
+    await _safe_edit(bot, result.inline_message_id, text)
 
 
 async def _safe_edit(
@@ -123,7 +122,7 @@ async def _safe_edit(
     inline_message_id: str,
     text: str,
     *,
-    reply_markup: InlineKeyboardMarkup | None = None,
+    reply_markup=None,
 ) -> None:
     try:
         await bot.edit_message_text(
@@ -143,13 +142,11 @@ async def _safe_edit_media(
     item: TweetMedia,
     *,
     caption: str,
-    reply_markup: InlineKeyboardMarkup,
 ) -> None:
     try:
         await bot.edit_message_media(
             inline_message_id=inline_message_id,
             media=_input_media(item, caption),
-            reply_markup=reply_markup,
         )
     except TelegramBadRequest:
         logger.exception("failed to edit inline media")
@@ -163,17 +160,11 @@ async def _safe_edit_media(
                         parse_mode=ParseMode.HTML,
                         show_caption_above_media=True,
                     ),
-                    reply_markup=reply_markup,
                 )
                 return
             except TelegramBadRequest:
                 logger.exception("failed to edit inline media preview")
-        await _safe_edit(
-            bot,
-            inline_message_id,
-            caption,
-            reply_markup=reply_markup,
-        )
+        await _safe_edit(bot, inline_message_id, caption)
 
 
 def _input_media(item: TweetMedia, caption: str):
@@ -211,10 +202,11 @@ def _duration_seconds(duration_ms: int | None) -> int | None:
     return max(1, round(duration_ms / 1000))
 
 
-def _inline_caption(caption: str, media_count: int) -> str:
-    if media_count <= 1:
-        return caption
-    note = f"\n\n📎 Еще медиа в посте: {media_count - 1}. Откройте оригинальный пост."
-    if len(caption) + len(note) > CAPTION_LIMIT:
-        return caption
-    return caption + note
+def _inline_caption(caption: str, original_url: str, media_count: int) -> str:
+    extra_note = ""
+    if media_count > 1:
+        extra_note = f"\n\n📎 Еще медиа в посте: {media_count - 1}."
+    candidate = caption + extra_note
+    if len(candidate) > CAPTION_LIMIT:
+        candidate = caption
+    return append_original_link(candidate, original_url, limit=CAPTION_LIMIT)
