@@ -17,9 +17,9 @@ from app.utils.urls import extract_first_tweet_url
 router = Router(name="private")
 router.message.filter(F.chat.type == ChatType.PRIVATE)
 
-INVALID_LINK_TEXT = "Пришлите ссылку на пост X/Twitter, например https://x.com/user/status/123"
+INVALID_LINK_TEXT = "🔗 Пришлите ссылку на пост X/Twitter, например https://x.com/user/status/123"
 FETCH_ERROR_TEXT = (
-    "Не удалось получить пост. Возможно, он удален, приватный или временно недоступен."
+    "⚠️ Не удалось получить пост. Возможно, он удален, приватный или временно недоступен."
 )
 
 
@@ -27,12 +27,12 @@ FETCH_ERROR_TEXT = (
 async def start(message: Message, access_service: AccessService) -> None:
     assert message.from_user is not None
     has_access = await access_service.has_access(message.from_user.id)
-    status = "доступ открыт" if has_access else "доступ закрыт"
+    status = "🟢 доступ открыт" if has_access else "🔒 доступ закрыт"
     await message.answer(
-        "Xtract Bot помогает красиво пересылать посты X/Twitter в Telegram.\n\n"
-        f"Ваш Telegram ID: <code>{message.from_user.id}</code>\n"
-        f"Статус: {status}\n\n"
-        "Отправьте ссылку на пост после получения доступа.",
+        "👋 <b>Xtract Bot</b> помогает красиво пересылать посты X/Twitter в Telegram.\n\n"
+        f"🆔 Ваш Telegram ID: <code>{message.from_user.id}</code>\n"
+        f"📌 Статус: {status}\n\n"
+        "📨 Отправьте ссылку на пост после получения доступа.",
         parse_mode=ParseMode.HTML,
         link_preview_options=DISABLED_LINK_PREVIEW,
     )
@@ -41,10 +41,14 @@ async def start(message: Message, access_service: AccessService) -> None:
 @router.message(Command("help"))
 async def help_command(message: Message) -> None:
     await message.answer(
-        "Отправьте ссылку на пост X/Twitter в личный чат с ботом.\n"
-        "Поддерживаются x.com, twitter.com, mobile.twitter.com и vxtwitter.com.\n\n"
-        "Inline режим: введите @bot_username <ссылка> в любом чате.\n"
-        "Команда /id покажет ваш Telegram ID."
+        "📖 <b>Как пользоваться ботом</b>\n\n"
+        "📨 Отправьте ссылку на пост X/Twitter в личный чат с ботом.\n"
+        "✅ Поддерживаются: x.com, twitter.com, mobile.twitter.com, vxtwitter.com.\n\n"
+        "🔍 <b>Inline режим:</b> введите "
+        "<code>@bot_username &lt;ссылка&gt;</code> в любом чате.\n\n"
+        "🆔 /id — покажет ваш Telegram ID.",
+        parse_mode=ParseMode.HTML,
+        link_preview_options=DISABLED_LINK_PREVIEW,
     )
 
 
@@ -52,7 +56,7 @@ async def help_command(message: Message) -> None:
 async def id_command(message: Message) -> None:
     assert message.from_user is not None
     await message.answer(
-        f"Ваш Telegram ID: <code>{message.from_user.id}</code>", parse_mode=ParseMode.HTML
+        f"🆔 Ваш Telegram ID: <code>{message.from_user.id}</code>", parse_mode=ParseMode.HTML
     )
 
 
@@ -61,7 +65,7 @@ async def handle_text(message: Message, tweet_share_service: TweetShareService) 
     assert message.from_user is not None
     text = message.text or ""
     if text.startswith("/"):
-        await message.answer("Неизвестная команда. Используйте /help.")
+        await message.answer("❓ Неизвестная команда. Используйте /help.")
         return
     if extract_first_tweet_url(text) is None:
         await message.answer(INVALID_LINK_TEXT, link_preview_options=DISABLED_LINK_PREVIEW)
@@ -260,7 +264,7 @@ def _input_group_media(item: TweetMedia, caption: str | None):
 
 async def _send_media_error(message: Message, original_url: str) -> None:
     await message.answer(
-        "Telegram не смог отправить медиа из поста.",
+        "⚠️ Telegram не смог отправить медиа из поста.",
         reply_markup=original_post_button(original_url),
         link_preview_options=DISABLED_LINK_PREVIEW,
     )

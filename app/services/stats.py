@@ -32,28 +32,32 @@ class StatsService:
     async def render_summary(self, *, telegram_user_id: int | None = None) -> str:
         summary = await self.get_summary(telegram_user_id=telegram_user_id)
         prefix = (
-            f"Статистика пользователя {telegram_user_id}\n" if telegram_user_id is not None else ""
+            f"📊 Статистика пользователя {telegram_user_id}\n"
+            if telegram_user_id is not None
+            else "📊 Общая статистика\n"
         )
         return (
             f"{prefix}"
-            f"Всего ссылок: {summary.total}\n"
-            f"Успешно: {summary.success}\n"
-            f"Ошибки: {summary.errors}\n"
-            f"Личный чат: {summary.private}\n"
-            f"Inline: {summary.inline}\n"
-            f"Пользователей: {summary.users}"
+            f"🔢 Всего ссылок: {summary.total}\n"
+            f"✅ Успешно: {summary.success}\n"
+            f"❌ Ошибки: {summary.errors}\n"
+            f"💬 Личный чат: {summary.private}\n"
+            f"🔍 Inline: {summary.inline}\n"
+            f"👥 Пользователей: {summary.users}"
         )
 
     async def render_tops(self) -> str:
         top_users = await self._share_events.top_users(limit=5)
         top_tweets = await self._share_events.top_tweets(limit=5)
-        user_lines = [f"{telegram_id}: {count}" for telegram_id, count in top_users] or [
-            "Нет данных"
+        user_lines = [f"• {telegram_id}: {count}" for telegram_id, count in top_users] or [
+            "📭 Нет данных"
         ]
-        tweet_lines = [f"{tweet_id}: {count}" for tweet_id, count in top_tweets] or ["Нет данных"]
+        tweet_lines = [f"• {tweet_id}: {count}" for tweet_id, count in top_tweets] or [
+            "📭 Нет данных"
+        ]
         return (
-            "Топ пользователей:\n"
+            "🏆 Топ пользователей:\n"
             + "\n".join(user_lines)
-            + "\n\nТоп постов:\n"
+            + "\n\n🔥 Топ постов:\n"
             + "\n".join(tweet_lines)
         )

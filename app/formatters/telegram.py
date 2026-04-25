@@ -43,7 +43,7 @@ def render_tweet_html(tweet: TweetData, *, limit: int = MESSAGE_LIMIT) -> str:
             related_title = _related_title_html(related_tweet, quoted=bool(tweet.quoted_tweet))
             parts.extend(["", related_title, f"<blockquote>{related}</blockquote>"])
         if len(tweet.media) > MAX_MEDIA:
-            parts.extend(["", f"Показаны первые {MAX_MEDIA} медиа из {len(tweet.media)}."])
+            parts.extend(["", f"📎 Показаны первые {MAX_MEDIA} медиа из {len(tweet.media)}."])
         return "\n".join(parts)
 
     rendered = build(raw_text)

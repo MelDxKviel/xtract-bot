@@ -26,7 +26,7 @@ async def allow_user(
         return
     telegram_id = _parse_telegram_id(command.args)
     if telegram_id is None:
-        await message.answer("Использование: /allow <telegram_id>")
+        await message.answer("ℹ️ Использование: /allow <telegram_id>")
         return
     await access_service.allow_user(telegram_id)
     await admin_actions_repository.create(
@@ -34,7 +34,7 @@ async def allow_user(
         action="allow",
         target_telegram_id=telegram_id,
     )
-    await message.answer(f"Пользователь {telegram_id} добавлен в whitelist.")
+    await message.answer(f"✅ Пользователь {telegram_id} добавлен в whitelist.")
 
 
 @router.message(Command("deny"))
@@ -48,7 +48,7 @@ async def deny_user(
         return
     telegram_id = _parse_telegram_id(command.args)
     if telegram_id is None:
-        await message.answer("Использование: /deny <telegram_id>")
+        await message.answer("ℹ️ Использование: /deny <telegram_id>")
         return
     await access_service.deny_user(telegram_id)
     await admin_actions_repository.create(
@@ -56,7 +56,7 @@ async def deny_user(
         action="deny",
         target_telegram_id=telegram_id,
     )
-    await message.answer(f"Пользователь {telegram_id} удален из whitelist.")
+    await message.answer(f"🚫 Пользователь {telegram_id} удален из whitelist.")
 
 
 @router.message(Command("users"))
@@ -65,13 +65,13 @@ async def users(message: Message, access_service: AccessService) -> None:
         return
     allowed_users = await access_service.list_allowed_users(limit=100)
     if not allowed_users:
-        await message.answer("Whitelist пуст.")
+        await message.answer("📭 Whitelist пуст.")
         return
 
-    lines = ["Разрешенные пользователи:"]
+    lines = ["👥 Разрешенные пользователи:"]
     for user in allowed_users:
         username = f" @{user.username}" if user.username else ""
-        lines.append(f"{user.telegram_id}{username}")
+        lines.append(f"• {user.telegram_id}{username}")
     await message.answer("\n".join(lines))
 
 
@@ -115,7 +115,9 @@ async def health(
         provider_ok = False
 
     await message.answer(
-        f"Health\nDB: {'ok' if db_ok else 'error'}\nProvider: {'ok' if provider_ok else 'error'}"
+        "🏥 Health\n"
+        f"🗄 DB: {'✅ ok' if db_ok else '❌ error'}\n"
+        f"🔌 Provider: {'✅ ok' if provider_ok else '❌ error'}"
     )
 
 
@@ -123,7 +125,7 @@ async def _require_admin(message: Message, access_service: AccessService) -> boo
     assert message.from_user is not None
     if access_service.is_admin(message.from_user.id):
         return True
-    await message.answer("Команда доступна только администратору.")
+    await message.answer("🔒 Команда доступна только администратору.")
     return False
 
 

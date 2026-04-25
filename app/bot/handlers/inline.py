@@ -34,10 +34,10 @@ async def inline_query(query: InlineQuery) -> None:
             [
                 InlineQueryResultArticle(
                     id="invalid-link",
-                    title="Нужна ссылка на пост X/Twitter",
+                    title="🔗 Нужна ссылка на пост X/Twitter",
                     description="Например: https://x.com/user/status/123",
                     input_message_content=InputTextMessageContent(
-                        message_text="Пришлите ссылку на пост X/Twitter.",
+                        message_text="🔗 Пришлите ссылку на пост X/Twitter.",
                         link_preview_options=DISABLED_LINK_PREVIEW,
                     ),
                 )
@@ -51,10 +51,10 @@ async def inline_query(query: InlineQuery) -> None:
         [
             InlineQueryResultArticle(
                 id=f"tweet-{parsed.tweet_id}",
-                title="Поделиться постом",
+                title="📤 Поделиться постом",
                 description=parsed.normalized_url,
                 input_message_content=InputTextMessageContent(
-                    message_text="Загрузка поста...",
+                    message_text="⏳ Загрузка поста...",
                     parse_mode=ParseMode.HTML,
                     link_preview_options=DISABLED_LINK_PREVIEW,
                 ),
@@ -80,7 +80,7 @@ async def chosen_inline_result(
         await _safe_edit(
             bot,
             result.inline_message_id,
-            "Не удалось распознать ссылку на пост X/Twitter.",
+            "⚠️ Не удалось распознать ссылку на пост X/Twitter.",
         )
         return
 
@@ -94,7 +94,7 @@ async def chosen_inline_result(
         await _safe_edit(
             bot,
             result.inline_message_id,
-            "Не удалось получить пост. Возможно, он удален, приватный или временно недоступен.",
+            "⚠️ Не удалось получить пост. Возможно, он удален, приватный или временно недоступен.",
             reply_markup=original_post_button(parsed.normalized_url),
         )
         return
@@ -214,7 +214,7 @@ def _duration_seconds(duration_ms: int | None) -> int | None:
 def _inline_caption(caption: str, media_count: int) -> str:
     if media_count <= 1:
         return caption
-    note = f"\n\nЕще медиа в посте: {media_count - 1}. Откройте оригинальный пост."
+    note = f"\n\n📎 Еще медиа в посте: {media_count - 1}. Откройте оригинальный пост."
     if len(caption) + len(note) > CAPTION_LIMIT:
         return caption
     return caption + note

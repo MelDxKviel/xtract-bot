@@ -1,6 +1,6 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions
 
-ORIGINAL_POST_BUTTON_TEXT = "Оригинальный пост"
+ORIGINAL_POST_BUTTON_TEXT = "🔗 Оригинальный пост"
 DISABLED_LINK_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 
