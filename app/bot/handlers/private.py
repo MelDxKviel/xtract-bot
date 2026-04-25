@@ -8,8 +8,8 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import InputMediaPhoto, InputMediaVideo, Message
 
-from app.bot.ui import DISABLED_LINK_PREVIEW, original_post_button
-from app.formatters.telegram import CAPTION_LIMIT
+from app.bot.ui import DISABLED_LINK_PREVIEW
+from app.formatters.telegram import CAPTION_LIMIT, MESSAGE_LIMIT
 from app.providers.base import TweetMedia
 from app.services import AccessService, ShareResult, TweetShareService
 from app.utils.urls import extract_first_tweet_url
@@ -90,7 +90,6 @@ async def _send_share_result(message: Message, result: ShareResult) -> None:
 
     post = result.post
     original_url = _result_original_url(result)
-    reply_markup = original_post_button(original_url)
     groupable_media = [item for item in post.media if item.type in {"photo", "video"}]
     animation_media = [item for item in post.media if item.type == "gif"]
 
@@ -100,7 +99,6 @@ async def _send_share_result(message: Message, result: ShareResult) -> None:
                 message,
                 groupable_media,
                 post.caption_html,
-                reply_markup=reply_markup,
                 original_url=original_url,
             )
             for item in animation_media:
@@ -113,7 +111,6 @@ async def _send_share_result(message: Message, result: ShareResult) -> None:
                 message,
                 first,
                 caption=post.caption_html,
-                reply_markup=reply_markup,
                 original_url=original_url,
             )
             for item in rest:
@@ -121,16 +118,14 @@ async def _send_share_result(message: Message, result: ShareResult) -> None:
             return
 
         await message.answer(
-            post.html,
+            _text_with_original_link(post.html, original_url),
             parse_mode=ParseMode.HTML,
-            reply_markup=reply_markup,
             link_preview_options=DISABLED_LINK_PREVIEW,
         )
     except TelegramBadRequest:
         await message.answer(
-            post.html,
+            _text_with_original_link(post.html, original_url),
             parse_mode=ParseMode.HTML,
-            reply_markup=reply_markup,
             link_preview_options=DISABLED_LINK_PREVIEW,
         )
 
@@ -140,7 +135,6 @@ async def _send_groupable_media(
     media: list[TweetMedia],
     caption: str,
     *,
-    reply_markup,
     original_url: str,
 ) -> None:
     if len(media) == 1:
@@ -148,7 +142,6 @@ async def _send_groupable_media(
             message,
             media[0],
             caption=caption,
-            reply_markup=reply_markup,
             original_url=original_url,
         )
         return
@@ -166,10 +159,8 @@ async def _send_groupable_media(
                 message,
                 item,
                 caption=caption if index == 0 else None,
-                reply_markup=reply_markup if index == 0 else None,
                 original_url=original_url,
             )
-        return
 
 
 async def _send_single_groupable_media(
@@ -177,24 +168,22 @@ async def _send_single_groupable_media(
     item: TweetMedia,
     caption: str | None,
     *,
-    reply_markup=None,
     original_url: str,
 ) -> None:
+    full_caption = _caption_with_original_link(caption, original_url) if caption else None
     try:
         if item.type == "photo":
             await message.answer_photo(
                 item.url,
-                caption=caption,
+                caption=full_caption,
                 parse_mode=ParseMode.HTML,
-                reply_markup=reply_markup,
                 show_caption_above_media=True,
             )
         else:
             await message.answer_video(
                 item.url,
-                caption=caption,
+                caption=full_caption,
                 parse_mode=ParseMode.HTML,
-                reply_markup=reply_markup,
                 show_caption_above_media=True,
                 width=item.width,
                 height=item.height,
@@ -204,9 +193,8 @@ async def _send_single_groupable_media(
         if item.preview_url:
             await message.answer_photo(
                 item.preview_url,
-                caption=caption,
+                caption=full_caption,
                 parse_mode=ParseMode.HTML,
-                reply_markup=reply_markup,
                 show_caption_above_media=True,
             )
             return
@@ -218,25 +206,23 @@ async def _send_single_media(
     item: TweetMedia,
     caption: str | None = None,
     *,
-    reply_markup=None,
     original_url: str,
 ) -> None:
+    full_caption = _caption_with_original_link(caption, original_url) if caption else None
     try:
         if item.type == "gif":
             await message.answer_animation(
                 item.url,
-                caption=caption,
+                caption=full_caption,
                 parse_mode=ParseMode.HTML,
-                reply_markup=reply_markup,
                 show_caption_above_media=True,
             )
     except TelegramBadRequest:
         if item.preview_url:
             await message.answer_photo(
                 item.preview_url,
-                caption=caption,
+                caption=full_caption,
                 parse_mode=ParseMode.HTML,
-                reply_markup=reply_markup,
                 show_caption_above_media=True,
             )
             return
@@ -263,9 +249,10 @@ def _input_group_media(item: TweetMedia, caption: str | None):
 
 
 async def _send_media_error(message: Message, original_url: str) -> None:
+    link = f'<a href="{escape(original_url, quote=True)}">Открыть оригинальный пост</a>'
     await message.answer(
-        "⚠️ Telegram не смог отправить медиа из поста.",
-        reply_markup=original_post_button(original_url),
+        f"⚠️ Telegram не смог отправить медиа из поста.\n\n{link}",
+        parse_mode=ParseMode.HTML,
         link_preview_options=DISABLED_LINK_PREVIEW,
     )
 
@@ -281,6 +268,13 @@ def _caption_with_original_link(caption: str, original_url: str) -> str:
     if len(caption) + len(link) <= CAPTION_LIMIT:
         return caption + link
     return caption
+
+
+def _text_with_original_link(text: str, original_url: str) -> str:
+    link = f'\n\n<a href="{escape(original_url, quote=True)}">Оригинальный пост</a>'
+    if len(text) + len(link) <= MESSAGE_LIMIT:
+        return text + link
+    return text
 
 
 def _result_original_url(result: ShareResult) -> str:
