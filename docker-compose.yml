@@ -16,6 +16,7 @@ services:
       retries: 20
 
   bot:
+    image: ghcr.io/meldxkviel/xtract-bot:latest
     build: .
     env_file:
       - .env
