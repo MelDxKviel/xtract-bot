@@ -65,7 +65,7 @@ cp .env.example .env
 ### 3. Запустите через Docker Compose
 
 ```bash
-docker compose up --build
+docker compose -f docker-compose.local.yml up --build
 ```
 
 Контейнер `bot` перед стартом выполняет:
