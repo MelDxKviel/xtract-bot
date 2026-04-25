@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     bot_token: SecretStr = Field(alias="BOT_TOKEN")
     database_url: str = Field(alias="DATABASE_URL")
     admin_ids: str = Field(default="", alias="ADMIN_IDS")
+    access_whitelist_enabled: bool = Field(default=True, alias="ACCESS_WHITELIST_ENABLED")
     tweet_provider: Literal["fake", "public_embed", "external_http", "x_api"] = Field(
         default="fake",
         alias="TWEET_PROVIDER",

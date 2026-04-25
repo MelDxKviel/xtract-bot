@@ -28,7 +28,34 @@ def test_render_tweet_html_truncates_to_message_limit() -> None:
     html = render_tweet_html(make_tweet(text="x" * 10_000))
 
     assert len(html) <= MESSAGE_LIMIT
-    assert "Оригинал" in html
+    assert "https://x.com/user/status/123" not in html
+
+
+def test_render_tweet_html_does_not_include_original_link() -> None:
+    html = render_tweet_html(make_tweet())
+
+    assert "https://x.com/user/status/123" not in html
+    assert "Открыть оригинал" not in html
+
+
+def test_render_tweet_html_renders_quoted_tweet_as_blockquote() -> None:
+    html = render_tweet_html(
+        make_tweet(
+            quoted_tweet=make_tweet(
+                tweet_id="456",
+                url="https://x.com/quoted/status/456",
+                author_name="Quoted Author",
+                author_username="quoted",
+                author_url="https://x.com/quoted",
+                text="Quoted <text>",
+            )
+        )
+    )
+
+    assert '<a href="https://x.com/quoted/status/456">Цитируемый пост</a>:' in html
+    assert "<blockquote>" in html
+    assert "Quoted Author (@quoted):" in html
+    assert "Quoted &lt;text&gt;" in html
 
 
 def test_format_tweet_limits_caption_and_media() -> None:

@@ -23,7 +23,7 @@ async def run_bot() -> None:
     provider = create_tweet_provider(settings)
     bot = Bot(
         token=settings.bot_token.get_secret_value(),
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML, link_preview_is_disabled=True),
     )
     dispatcher = build_dispatcher(settings, session_factory, provider)
 

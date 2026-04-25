@@ -4,9 +4,16 @@ from typing import Any
 
 
 class AccessService:
-    def __init__(self, user_repository: Any, admin_ids: frozenset[int]) -> None:
+    def __init__(
+        self,
+        user_repository: Any,
+        admin_ids: frozenset[int],
+        *,
+        whitelist_enabled: bool = True,
+    ) -> None:
         self._users = user_repository
         self._admin_ids = admin_ids
+        self._whitelist_enabled = whitelist_enabled
 
     def is_admin(self, telegram_id: int) -> bool:
         return telegram_id in self._admin_ids
@@ -20,7 +27,11 @@ class AccessService:
         )
 
     async def has_access(self, telegram_id: int) -> bool:
-        return self.is_admin(telegram_id) or await self._users.is_allowed(telegram_id)
+        if self.is_admin(telegram_id):
+            return True
+        if not self._whitelist_enabled:
+            return True
+        return await self._users.is_allowed(telegram_id)
 
     async def allow_user(self, telegram_id: int) -> None:
         await self._users.set_allowed(telegram_id, True)

@@ -46,6 +46,22 @@ def test_allow_and_deny_user() -> None:
     asyncio.run(run())
 
 
+def test_disabled_whitelist_allows_regular_user() -> None:
+    async def run() -> None:
+        service = AccessService(FakeUsers(), frozenset(), whitelist_enabled=False)
+        assert await service.has_access(2) is True
+
+    asyncio.run(run())
+
+
+def test_enabled_whitelist_denies_regular_user_by_default() -> None:
+    async def run() -> None:
+        service = AccessService(FakeUsers(), frozenset(), whitelist_enabled=True)
+        assert await service.has_access(2) is False
+
+    asyncio.run(run())
+
+
 def test_register_user_delegates_to_repository() -> None:
     async def run() -> None:
         users = FakeUsers()

@@ -37,12 +37,13 @@ def render_tweet_html(tweet: TweetData, *, limit: int = MESSAGE_LIMIT) -> str:
             "",
             escape(text),
         ]
-        related = _related_html(tweet)
+        related_tweet = tweet.quoted_tweet or tweet.replied_to_tweet
+        related = _related_html(related_tweet) if related_tweet else None
         if related:
-            parts.extend(["", f"<blockquote>{related}</blockquote>"])
+            related_title = _related_title_html(related_tweet, quoted=bool(tweet.quoted_tweet))
+            parts.extend(["", related_title, f"<blockquote>{related}</blockquote>"])
         if len(tweet.media) > MAX_MEDIA:
             parts.extend(["", f"Показаны первые {MAX_MEDIA} медиа из {len(tweet.media)}."])
-        parts.extend(["", _original_html(tweet.url)])
         return "\n".join(parts)
 
     rendered = build(raw_text)
@@ -57,8 +58,8 @@ def render_tweet_html(tweet: TweetData, *, limit: int = MESSAGE_LIMIT) -> str:
         if len(rendered) <= limit:
             return rendered
 
-    fallback = f"{_author_html(tweet)}\n\n...\n\n{_original_html(tweet.url)}"
-    return fallback if len(fallback) <= limit else _original_html(tweet.url)
+    fallback = f"{_author_html(tweet)}\n\n..."
+    return fallback if len(fallback) <= limit else "..."
 
 
 def _author_html(tweet: TweetData) -> str:
@@ -66,18 +67,17 @@ def _author_html(tweet: TweetData) -> str:
     return f'<a href="{escape(tweet.author_url, quote=True)}">{escape(label)}</a>'
 
 
-def _original_html(url: str) -> str:
-    escaped_url = escape(url, quote=True)
-    return f'Оригинал: <a href="{escaped_url}">{escape(url)}</a>'
+def _related_title_html(tweet: TweetData, *, quoted: bool) -> str:
+    label = "Цитируемый пост" if quoted else "Родительский пост"
+    return f'<a href="{escape(tweet.url, quote=True)}">{label}</a>:'
 
 
-def _related_html(tweet: TweetData) -> str | None:
-    related = tweet.quoted_tweet or tweet.replied_to_tweet
-    if not related:
+def _related_html(tweet: TweetData | None) -> str | None:
+    if not tweet:
         return None
-    text = (related.text or "Пост без текста.").strip() or "Пост без текста."
-    label = f"{related.author_name} (@{related.author_username}): "
-    return escape(label + _truncate_raw(text, 500))
+    text = (tweet.text or "Пост без текста.").strip() or "Пост без текста."
+    label = f"{tweet.author_name} (@{tweet.author_username})"
+    return f"{escape(label)}:\n{escape(_truncate_raw(text, 500))}"
 
 
 def _truncate_raw(value: str, max_length: int) -> str:

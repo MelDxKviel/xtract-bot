@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from html import unescape
 from html.parser import HTMLParser
 from typing import Any
@@ -13,16 +13,18 @@ from app.providers.base import TweetData, TweetMedia, TweetProvider, TweetProvid
 
 SYNDICATION_URL = "https://cdn.syndication.twimg.com/tweet-result"
 OEMBED_URL = "https://publish.twitter.com/oembed"
+FXTWITTER_URL = "https://api.fxtwitter.com/status/{tweet_id}"
+VXTWITTER_URL = "https://api.vxtwitter.com/Twitter/status/{tweet_id}"
 USER_AGENT = "xtract-bot/0.1 (+https://github.com/)"
 TWITTER_DATE_FORMAT = "%a %b %d %H:%M:%S %z %Y"
 WHITESPACE_RE = re.compile(r"[ \t\r\f\v]+")
 
 
 class PublicEmbedTweetProvider(TweetProvider):
-    """Fetch public tweet data from unauthenticated Twitter embed endpoints.
+    """Fetch public tweet data from unauthenticated public endpoints.
 
     This provider intentionally does not use accounts, cookies, browser automation,
-    or private API tokens. It only reads data that Twitter exposes for public embeds.
+    or private API tokens. It only reads data exposed for public cards/embeds.
     """
 
     def __init__(self, *, timeout: float = 10.0, client: httpx.AsyncClient | None = None) -> None:
@@ -37,22 +39,21 @@ class PublicEmbedTweetProvider(TweetProvider):
         self._owns_client = client is None
 
     async def get_tweet(self, tweet_id: str, source_url: str) -> TweetData:
-        first_error: TweetProviderError | None = None
-        try:
-            return await self._get_from_syndication(tweet_id, source_url)
-        except TweetProviderError as exc:
-            first_error = exc
-            if exc.code == "provider_rate_limited":
-                raise
+        errors: list[TweetProviderError] = []
+        for getter in (
+            self._get_from_fxtwitter,
+            self._get_from_vxtwitter,
+            self._get_from_syndication,
+            self._get_from_oembed,
+        ):
+            try:
+                tweet = await getter(tweet_id, source_url)
+                _ensure_usable_tweet(tweet)
+                return tweet
+            except TweetProviderError as exc:
+                errors.append(exc)
 
-        try:
-            return await self._get_from_oembed(tweet_id, source_url)
-        except TweetProviderError as exc:
-            if exc.code in {"not_found", "private_or_deleted", "provider_rate_limited"}:
-                raise
-            if first_error is not None:
-                raise first_error from exc
-            raise
+        raise _select_provider_error(errors)
 
     async def health(self) -> bool:
         try:
@@ -71,6 +72,14 @@ class PublicEmbedTweetProvider(TweetProvider):
     async def close(self) -> None:
         if self._owns_client:
             await self._client.aclose()
+
+    async def _get_from_fxtwitter(self, tweet_id: str, source_url: str) -> TweetData:
+        payload = await self._get_json(FXTWITTER_URL.format(tweet_id=tweet_id))
+        return _tweet_from_public_api(payload, source_url, requested_tweet_id=tweet_id)
+
+    async def _get_from_vxtwitter(self, tweet_id: str, source_url: str) -> TweetData:
+        payload = await self._get_json(VXTWITTER_URL.format(tweet_id=tweet_id))
+        return _tweet_from_public_api(payload, source_url, requested_tweet_id=tweet_id)
 
     async def _get_from_syndication(self, tweet_id: str, source_url: str) -> TweetData:
         payload = await self._get_json(
@@ -112,9 +121,10 @@ class PublicEmbedTweetProvider(TweetProvider):
             for url in parser.image_urls
             if _looks_like_twitter_media(url)
         ]
+        tweet_url = _canonicalize_tweet_url(str(payload.get("url") or source_url))
         return TweetData(
             tweet_id=tweet_id,
-            url=source_url,
+            url=tweet_url,
             author_name=str(payload.get("author_name") or username),
             author_username=username,
             author_url=author_url,
@@ -123,7 +133,12 @@ class PublicEmbedTweetProvider(TweetProvider):
             lang=parser.lang,
         )
 
-    async def _get_json(self, url: str, *, params: dict[str, str]) -> dict[str, Any]:
+    async def _get_json(
+        self,
+        url: str,
+        *,
+        params: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         try:
             response = await self._client.get(url, params=params)
         except httpx.TimeoutException as exc:
@@ -159,6 +174,215 @@ class PublicEmbedTweetProvider(TweetProvider):
                 code="provider_bad_response",
             )
         return payload
+
+
+def _tweet_from_public_api(
+    payload: dict[str, Any],
+    source_url: str,
+    *,
+    requested_tweet_id: str,
+    seen_ids: frozenset[str] = frozenset(),
+) -> TweetData:
+    _raise_for_public_api_error(payload)
+    data = payload.get("tweet") if isinstance(payload.get("tweet"), dict) else payload
+    if not isinstance(data, dict):
+        raise TweetProviderError(
+            "public API returned no tweet object",
+            code="provider_bad_response",
+        )
+
+    tweet_id = _first_str(data, "id", "tweetID", "id_str", "conversationID") or requested_tweet_id
+    username = _public_api_username(data)
+    author_name = _public_api_author_name(data, username=username)
+    tweet_url = _public_api_tweet_url(
+        data,
+        username=username,
+        tweet_id=tweet_id,
+        fallback=source_url,
+    )
+
+    quoted_tweet = None
+    quoted_payload = _first_dict(
+        data,
+        "qrt",
+        "quote",
+        "quoted",
+        "quoted_tweet",
+        "quotedTweet",
+        "quoted_status",
+        "quotedStatus",
+    )
+    if isinstance(quoted_payload, dict):
+        quoted_id = _first_str(quoted_payload, "id", "tweetID", "id_str", "conversationID")
+        if quoted_id and quoted_id not in seen_ids | {tweet_id}:
+            quoted_tweet = _tweet_from_public_api(
+                quoted_payload,
+                _public_api_tweet_url(
+                    quoted_payload,
+                    username=_public_api_username(quoted_payload),
+                    tweet_id=quoted_id,
+                    fallback=tweet_url,
+                ),
+                requested_tweet_id=quoted_id,
+                seen_ids=seen_ids | {tweet_id},
+            )
+
+    return TweetData(
+        tweet_id=tweet_id,
+        url=tweet_url,
+        author_name=author_name,
+        author_username=username,
+        author_url=_public_api_author_url(data, username=username),
+        text=_public_api_text(data),
+        created_at=_public_api_datetime(data),
+        media=_media_from_public_api(data),
+        quoted_tweet=quoted_tweet,
+        lang=data.get("lang") if isinstance(data.get("lang"), str) else None,
+    )
+
+
+def _raise_for_public_api_error(payload: dict[str, Any]) -> None:
+    code = payload.get("code")
+    if code in (None, 200, "200"):
+        return
+
+    message = str(payload.get("message") or payload.get("error") or "public API error")
+    if code in (403, "403"):
+        raise TweetProviderError(message, code="private_or_deleted")
+    if code in (404, "404"):
+        raise TweetProviderError(message, code="not_found")
+    if code in (429, "429"):
+        raise TweetProviderError(message, code="provider_rate_limited")
+    raise TweetProviderError(message, code="provider_http_error")
+
+
+def _public_api_text(data: dict[str, Any]) -> str | None:
+    value = data.get("text")
+    if not isinstance(value, str):
+        raw_text = data.get("raw_text")
+        value = raw_text.get("text") if isinstance(raw_text, dict) else None
+    if not isinstance(value, str):
+        return None
+    return _normalize_text(unescape(value)) or None
+
+
+def _public_api_username(data: dict[str, Any]) -> str:
+    author = data.get("author") if isinstance(data.get("author"), dict) else {}
+    value = (
+        author.get("screen_name")
+        or author.get("username")
+        or data.get("user_screen_name")
+        or _username_from_url(str(data.get("url") or data.get("tweetURL") or ""))
+    )
+    if isinstance(value, str) and value.strip():
+        return value.strip().lstrip("@")
+    return "unknown"
+
+
+def _public_api_author_name(data: dict[str, Any], *, username: str) -> str:
+    author = data.get("author") if isinstance(data.get("author"), dict) else {}
+    value = author.get("name") or data.get("user_name") or username
+    return str(value or username)
+
+
+def _public_api_author_url(data: dict[str, Any], *, username: str) -> str:
+    author = data.get("author") if isinstance(data.get("author"), dict) else {}
+    value = author.get("url")
+    if isinstance(value, str) and value.startswith(("http://", "https://")):
+        return _canonicalize_author_url(value)
+    return _canonical_author_url(username)
+
+
+def _public_api_tweet_url(
+    data: dict[str, Any],
+    *,
+    username: str,
+    tweet_id: str,
+    fallback: str,
+) -> str:
+    if username != "unknown" and tweet_id:
+        return _canonical_tweet_url(username, tweet_id, fallback=fallback)
+    value = data.get("url") or data.get("tweetURL")
+    if isinstance(value, str) and value.startswith(("http://", "https://")):
+        return _canonicalize_tweet_url(value)
+    return _canonicalize_tweet_url(fallback)
+
+
+def _public_api_datetime(data: dict[str, Any]) -> datetime | None:
+    value = data.get("created_at") or data.get("date")
+    parsed = _parse_datetime(value)
+    if parsed is not None:
+        return parsed
+    timestamp = _int_or_none(data.get("created_timestamp") or data.get("date_epoch"))
+    if timestamp is None:
+        return None
+    return datetime.fromtimestamp(timestamp, tz=UTC)
+
+
+def _media_from_public_api(data: dict[str, Any]) -> list[TweetMedia]:
+    media: list[TweetMedia] = []
+    seen_urls: set[str] = set()
+
+    def add(item: TweetMedia | None) -> None:
+        if item is None or item.url in seen_urls:
+            return
+        seen_urls.add(item.url)
+        media.append(item)
+
+    media_payload = data.get("media") if isinstance(data.get("media"), dict) else {}
+    all_media = media_payload.get("all") if isinstance(media_payload, dict) else None
+    if isinstance(all_media, list):
+        for item in all_media:
+            if isinstance(item, dict):
+                add(_media_from_public_item(item))
+    else:
+        for key in ("photos", "videos", "gifs"):
+            items = media_payload.get(key) if isinstance(media_payload, dict) else None
+            if isinstance(items, list):
+                for item in items:
+                    if isinstance(item, dict):
+                        add(_media_from_public_item(item))
+
+    media_extended = data.get("media_extended")
+    if isinstance(media_extended, list):
+        for item in media_extended:
+            if isinstance(item, dict):
+                add(_media_from_public_item(item))
+
+    media_urls = data.get("mediaURLs")
+    if isinstance(media_urls, list):
+        for url in media_urls:
+            if isinstance(url, str):
+                add(TweetMedia(type="photo", url=url))
+
+    return media
+
+
+def _media_from_public_item(item: dict[str, Any]) -> TweetMedia | None:
+    media_type = str(item.get("type") or "").lower()
+    url = _media_url(item) or _first_str(item, "video_url", "download_url")
+    if not url:
+        return None
+
+    if media_type in {"photo", "image"}:
+        normalized_type = "photo"
+    elif media_type in {"gif", "animated_gif"}:
+        normalized_type = "gif"
+    elif media_type == "video":
+        normalized_type = "video"
+    elif _looks_like_twitter_media(url):
+        normalized_type = "photo"
+    else:
+        return None
+
+    return TweetMedia(
+        type=normalized_type,
+        url=url,
+        preview_url=_first_str(item, "thumbnail_url", "preview_url", "poster"),
+        width=_int_or_none(item.get("width")) or _nested_int(item, "size", "width"),
+        height=_int_or_none(item.get("height")) or _nested_int(item, "size", "height"),
+        duration_ms=_int_or_none(item.get("duration_ms") or item.get("duration_millis")),
+    )
 
 
 class _TweetEmbedParser(HTMLParser):
@@ -221,7 +445,16 @@ def _tweet_from_syndication(
     author_name = str(user.get("name") or user.get("display_name") or username)
 
     quoted_tweet = None
-    quoted_payload = payload.get("quoted_tweet") or payload.get("quotedTweet")
+    quoted_payload = _first_dict(
+        payload,
+        "quoted_tweet",
+        "quotedTweet",
+        "quoted_status",
+        "quotedStatus",
+        "quote",
+        "quoted",
+        "qrt",
+    )
     if isinstance(quoted_payload, dict):
         quoted_id = str(quoted_payload.get("id_str") or quoted_payload.get("id") or "")
         if quoted_id and quoted_id not in seen_ids | {tweet_id}:
@@ -234,7 +467,7 @@ def _tweet_from_syndication(
 
     return TweetData(
         tweet_id=tweet_id,
-        url=source_url,
+        url=_canonical_tweet_url(username, tweet_id, fallback=source_url),
         author_name=author_name,
         author_username=username,
         author_url=_canonical_author_url(username),
@@ -384,6 +617,79 @@ def _oembed_tweet_url(url: str) -> str:
     if not parsed.path:
         return url
     return f"https://twitter.com{parsed.path}"
+
+
+def _ensure_usable_tweet(tweet: TweetData) -> None:
+    has_content = bool(tweet.text or tweet.media or tweet.quoted_tweet or tweet.replied_to_tweet)
+    if not has_content:
+        raise TweetProviderError(
+            "provider returned tweet without content",
+            code="provider_bad_response",
+        )
+    if tweet.author_username == "unknown":
+        raise TweetProviderError(
+            "provider returned tweet without author",
+            code="provider_bad_response",
+        )
+
+
+def _select_provider_error(errors: list[TweetProviderError]) -> TweetProviderError:
+    if not errors:
+        return TweetProviderError("tweet provider failed", code="provider_error")
+    for code in ("not_found", "private_or_deleted", "provider_rate_limited"):
+        if any(error.code == code for error in errors):
+            return next(error for error in reversed(errors) if error.code == code)
+    return errors[-1]
+
+
+def _canonical_tweet_url(username: str, tweet_id: str, *, fallback: str) -> str:
+    if username and username != "unknown" and tweet_id:
+        return f"https://x.com/{username.lstrip('@')}/status/{tweet_id}"
+    return _canonicalize_tweet_url(fallback)
+
+
+def _canonicalize_tweet_url(url: str) -> str:
+    parsed = urlparse(url)
+    parts = [part for part in parsed.path.split("/") if part]
+    for index, part in enumerate(parts):
+        if part not in {"status", "statuses"} or index + 1 >= len(parts):
+            continue
+        tweet_id = parts[index + 1]
+        username = parts[index - 1] if index > 0 else ""
+        if username and username not in {"i", "intent", "share"}:
+            return f"https://x.com/{username}/status/{tweet_id}"
+    return url
+
+
+def _canonicalize_author_url(url: str) -> str:
+    username = _username_from_url(url)
+    return _canonical_author_url(username) if username else url
+
+
+def _first_str(payload: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            return value
+        if isinstance(value, int):
+            return str(value)
+    return None
+
+
+def _first_dict(payload: dict[str, Any], *keys: str) -> dict[str, Any] | None:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, dict):
+            nested = value.get("tweet") if isinstance(value.get("tweet"), dict) else None
+            return nested or value
+    return None
+
+
+def _nested_int(payload: dict[str, Any], object_key: str, value_key: str) -> int | None:
+    nested = payload.get(object_key)
+    if not isinstance(nested, dict):
+        return None
+    return _int_or_none(nested.get(value_key))
 
 
 def _username_from_user(user: dict[str, Any]) -> str | None:

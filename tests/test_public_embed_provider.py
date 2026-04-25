@@ -6,6 +6,79 @@ from app.providers.base import TweetProviderError
 from app.providers.public_embed import PublicEmbedTweetProvider
 
 
+def test_public_embed_provider_reads_fxtwitter_payload_first() -> None:
+    async def run() -> None:
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(str(request.url.host))
+            return httpx.Response(
+                200,
+                json={
+                    "code": 200,
+                    "message": "OK",
+                    "tweet": {
+                        "url": "https://x.com/fillpackart/status/2047970725802242311",
+                        "id": "2047970725802242311",
+                        "text": (
+                            "А твиттер тем временем всё лучше и лучше становится\n\n"
+                            "Маску следует разыскать этих чмошников, которых он тогда "
+                            "поувольнял нахуй, и уволить их ещё раз"
+                        ),
+                        "author": {
+                            "screen_name": "fillpackart",
+                            "url": "https://x.com/fillpackart",
+                            "name": "Фил Ранжин",
+                        },
+                        "created_at": "Sat Apr 25 09:27:25 +0000 2026",
+                        "lang": "ru",
+                        "media": {
+                            "all": [
+                                {
+                                    "type": "photo",
+                                    "url": "https://pbs.twimg.com/media/HGvaTpqXsAAPE9w.jpg?name=orig",
+                                    "width": 937,
+                                    "height": 445,
+                                }
+                            ]
+                        },
+                        "quote": {
+                            "id": "2047000000000000000",
+                            "text": "Quoted tweet text",
+                            "author": {
+                                "screen_name": "quoted_user",
+                                "name": "Quoted User",
+                            },
+                        },
+                    },
+                },
+                request=request,
+            )
+
+        provider = PublicEmbedTweetProvider(client=_client(handler))
+
+        tweet = await provider.get_tweet(
+            "2047970725802242311",
+            "https://x.com/i/status/2047970725802242311",
+        )
+
+        assert calls == ["api.fxtwitter.com"]
+        assert tweet.tweet_id == "2047970725802242311"
+        assert tweet.url == "https://x.com/fillpackart/status/2047970725802242311"
+        assert tweet.author_name == "Фил Ранжин"
+        assert tweet.author_username == "fillpackart"
+        assert tweet.text is not None
+        assert "А твиттер тем временем" in tweet.text
+        assert tweet.lang == "ru"
+        assert tweet.media[0].type == "photo"
+        assert tweet.media[0].width == 937
+        assert tweet.quoted_tweet is not None
+        assert tweet.quoted_tweet.author_username == "quoted_user"
+        assert tweet.quoted_tweet.text == "Quoted tweet text"
+
+    asyncio.run(run())
+
+
 def test_public_embed_provider_reads_syndication_payload() -> None:
     async def run() -> None:
         payload = {
@@ -100,6 +173,45 @@ def test_public_embed_provider_falls_back_to_oembed() -> None:
         assert tweet.text == "Hello link\nline 2"
         assert tweet.lang == "en"
         assert tweet.media[0].url == "https://pbs.twimg.com/media/photo.jpg"
+
+    asyncio.run(run())
+
+
+def test_public_embed_provider_skips_empty_syndication_payload() -> None:
+    async def run() -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.host in {"api.fxtwitter.com", "api.vxtwitter.com"}:
+                return httpx.Response(503, request=request)
+            if request.url.host == "cdn.syndication.twimg.com":
+                return httpx.Response(200, json={}, request=request)
+            return httpx.Response(
+                200,
+                json={
+                    "url": "https://twitter.com/fillpackart/status/2047970725802242311",
+                    "author_name": "Фил Ранжин",
+                    "author_url": "https://twitter.com/fillpackart",
+                    "html": (
+                        '<blockquote class="twitter-tweet">'
+                        '<p lang="ru" dir="ltr">А твиттер тем временем всё лучше</p>'
+                        "&mdash; Фил Ранжин (@fillpackart)"
+                        '<a href="https://twitter.com/fillpackart/status/2047970725802242311">'
+                        "Date</a></blockquote>"
+                    ),
+                },
+                request=request,
+            )
+
+        provider = PublicEmbedTweetProvider(client=_client(handler))
+
+        tweet = await provider.get_tweet(
+            "2047970725802242311",
+            "https://x.com/i/status/2047970725802242311",
+        )
+
+        assert tweet.author_username == "fillpackart"
+        assert tweet.author_name == "Фил Ранжин"
+        assert tweet.text == "А твиттер тем временем всё лучше"
+        assert tweet.url == "https://x.com/fillpackart/status/2047970725802242311"
 
     asyncio.run(run())
 

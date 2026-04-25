@@ -1,20 +1,24 @@
 from __future__ import annotations
 
 import logging
-from html import escape
 
 from aiogram import Bot, Router
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import (
     ChosenInlineResult,
-    InlineKeyboardButton,
     InlineKeyboardMarkup,
     InlineQuery,
     InlineQueryResultArticle,
+    InputMediaAnimation,
+    InputMediaPhoto,
+    InputMediaVideo,
     InputTextMessageContent,
 )
 
+from app.bot.ui import DISABLED_LINK_PREVIEW, original_post_button
+from app.formatters.telegram import CAPTION_LIMIT
+from app.providers.base import TweetMedia
 from app.services import TweetShareService
 from app.utils.urls import extract_first_tweet_url
 
@@ -33,7 +37,8 @@ async def inline_query(query: InlineQuery) -> None:
                     title="Нужна ссылка на пост X/Twitter",
                     description="Например: https://x.com/user/status/123",
                     input_message_content=InputTextMessageContent(
-                        message_text="Пришлите ссылку на пост X/Twitter."
+                        message_text="Пришлите ссылку на пост X/Twitter.",
+                        link_preview_options=DISABLED_LINK_PREVIEW,
                     ),
                 )
             ],
@@ -51,8 +56,9 @@ async def inline_query(query: InlineQuery) -> None:
                 input_message_content=InputTextMessageContent(
                     message_text="Загрузка поста...",
                     parse_mode=ParseMode.HTML,
+                    link_preview_options=DISABLED_LINK_PREVIEW,
                 ),
-                reply_markup=_original_button(parsed.normalized_url),
+                reply_markup=original_post_button(parsed.normalized_url),
             )
         ],
         cache_time=1,
@@ -89,18 +95,26 @@ async def chosen_inline_result(
             bot,
             result.inline_message_id,
             "Не удалось получить пост. Возможно, он удален, приватный или временно недоступен.",
-            reply_markup=_original_button(parsed.normalized_url),
+            reply_markup=original_post_button(parsed.normalized_url),
         )
         return
 
-    text = share.post.html
+    original_url = share.tweet.url if share.tweet is not None else parsed.normalized_url
     if share.post.media:
-        text += f"\n\nМедиа: {escape(share.post.media[0].url)}"
+        await _safe_edit_media(
+            bot,
+            result.inline_message_id,
+            share.post.media[0],
+            caption=_inline_caption(share.post.caption_html, len(share.post.media)),
+            reply_markup=original_post_button(original_url),
+        )
+        return
+
     await _safe_edit(
         bot,
         result.inline_message_id,
-        text,
-        reply_markup=_original_button(parsed.normalized_url),
+        share.post.html,
+        reply_markup=original_post_button(original_url),
     )
 
 
@@ -116,13 +130,91 @@ async def _safe_edit(
             inline_message_id=inline_message_id,
             text=text,
             parse_mode=ParseMode.HTML,
+            link_preview_options=DISABLED_LINK_PREVIEW,
             reply_markup=reply_markup,
         )
     except TelegramBadRequest:
         logger.exception("failed to edit inline message")
 
 
-def _original_button(url: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="Оригинал", url=url)]],
+async def _safe_edit_media(
+    bot: Bot,
+    inline_message_id: str,
+    item: TweetMedia,
+    *,
+    caption: str,
+    reply_markup: InlineKeyboardMarkup,
+) -> None:
+    try:
+        await bot.edit_message_media(
+            inline_message_id=inline_message_id,
+            media=_input_media(item, caption),
+            reply_markup=reply_markup,
+        )
+    except TelegramBadRequest:
+        logger.exception("failed to edit inline media")
+        if item.preview_url:
+            try:
+                await bot.edit_message_media(
+                    inline_message_id=inline_message_id,
+                    media=InputMediaPhoto(
+                        media=item.preview_url,
+                        caption=caption,
+                        parse_mode=ParseMode.HTML,
+                        show_caption_above_media=True,
+                    ),
+                    reply_markup=reply_markup,
+                )
+                return
+            except TelegramBadRequest:
+                logger.exception("failed to edit inline media preview")
+        await _safe_edit(
+            bot,
+            inline_message_id,
+            caption,
+            reply_markup=reply_markup,
+        )
+
+
+def _input_media(item: TweetMedia, caption: str):
+    if item.type == "photo":
+        return InputMediaPhoto(
+            media=item.url,
+            caption=caption,
+            parse_mode=ParseMode.HTML,
+            show_caption_above_media=True,
+        )
+    if item.type == "video":
+        return InputMediaVideo(
+            media=item.url,
+            caption=caption,
+            parse_mode=ParseMode.HTML,
+            show_caption_above_media=True,
+            width=item.width,
+            height=item.height,
+            duration=_duration_seconds(item.duration_ms),
+        )
+    return InputMediaAnimation(
+        media=item.url,
+        caption=caption,
+        parse_mode=ParseMode.HTML,
+        show_caption_above_media=True,
+        width=item.width,
+        height=item.height,
+        duration=_duration_seconds(item.duration_ms),
     )
+
+
+def _duration_seconds(duration_ms: int | None) -> int | None:
+    if duration_ms is None:
+        return None
+    return max(1, round(duration_ms / 1000))
+
+
+def _inline_caption(caption: str, media_count: int) -> str:
+    if media_count <= 1:
+        return caption
+    note = f"\n\nЕще медиа в посте: {media_count - 1}. Откройте оригинальный пост."
+    if len(caption) + len(note) > CAPTION_LIMIT:
+        return caption
+    return caption + note

@@ -26,6 +26,7 @@ Telegram-бот для удобного шеринга постов из X/Twitt
 BOT_TOKEN=123456:replace-me
 DATABASE_URL=postgresql+asyncpg://xtract:xtract@postgres:5432/xtract
 ADMIN_IDS=123456789,987654321
+ACCESS_WHITELIST_ENABLED=true
 TWEET_PROVIDER=public_embed
 TWEET_CACHE_TTL_SECONDS=86400
 TWEET_PROVIDER_TIMEOUT_SECONDS=10
@@ -36,9 +37,14 @@ POLLING_ENABLED=true
 Провайдеры:
 
 - `fake` - детерминированный dev-provider без обращения к X/Twitter.
-- `public_embed` - публичные embed/oEmbed endpoints Twitter без токенов, cookies и аккаунтов. Работает только с публичными постами и зависит от доступности embed-страниц.
+- `public_embed` - публичные FxTwitter/VxTwitter card endpoints с fallback на Twitter oEmbed без токенов, cookies и аккаунтов. Работает только с публичными постами и зависит от доступности этих публичных источников.
 - `external_http` - внешний сервис `GET /tweets/{tweet_id}`, возвращающий JSON модели `TweetData` или `{ "tweet": TweetData }`.
 - `x_api` - официальный X API v2, требует `X_BEARER_TOKEN`.
+
+Доступ:
+
+- `ACCESS_WHITELIST_ENABLED=true` - доступ только для админов и пользователей из whitelist.
+- `ACCESS_WHITELIST_ENABLED=false` - бот открыт для всех пользователей, админские команды все равно доступны только `ADMIN_IDS`.
 
 ## Запуск через Docker Compose
 

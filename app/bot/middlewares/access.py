@@ -44,7 +44,11 @@ class DatabaseSessionMiddleware(BaseMiddleware):
             tweet_cache = TweetCacheRepository(session)
             share_events = ShareEventRepository(session)
             admin_actions = AdminActionsRepository(session)
-            access_service = AccessService(users, self._settings.admin_id_set)
+            access_service = AccessService(
+                users,
+                self._settings.admin_id_set,
+                whitelist_enabled=self._settings.access_whitelist_enabled,
+            )
 
             data.update(
                 {
