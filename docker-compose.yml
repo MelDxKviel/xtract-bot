@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: xtract
+      POSTGRES_USER: xtract
+      POSTGRES_PASSWORD: xtract
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xtract -d xtract"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  bot:
+    build: .
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "alembic upgrade head && python -m app.main"
+
+volumes:
+  postgres-data:
