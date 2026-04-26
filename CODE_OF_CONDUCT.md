@@ -1,118 +1,68 @@
-# Кодекс поведения участников
+# Contributor Covenant Code of Conduct
 
-## Наше обязательство
+## Our Pledge
 
-Мы как участники, контрибьюторы и мейнтейнеры обязуемся сделать участие в нашем
-сообществе свободным от притеснений для всех, независимо от возраста, размера тела,
-видимой или невидимой инвалидности, этнической принадлежности, половых
-характеристик, гендерной идентичности и самовыражения, уровня опыта, образования,
-социально-экономического статуса, национальности, внешнего вида, расы, касты,
-цвета кожи, религии или сексуальной идентичности и ориентации.
+We as members, contributors, and maintainers pledge to make participation in our
+community a harassment-free experience for everyone, regardless of age, body size,
+disability, ethnicity, sex characteristics, gender identity and expression,
+level of experience, education, socio-economic status, nationality, personal
+appearance, race, religion, or sexual identity and orientation.
 
-Мы обязуемся действовать и взаимодействовать таким образом, чтобы способствовать
-открытому, гостеприимному, разнообразному, инклюзивному и здоровому сообществу.
+We pledge to act and interact in ways that contribute to an open, welcoming,
+diverse, inclusive, and healthy community.
 
-## Наши стандарты
+## Our Standards
 
-Примеры поведения, которое способствует созданию позитивной среды:
+Examples of behavior that contributes to a positive environment include:
 
-- 💬 Демонстрация эмпатии и доброты по отношению к другим людям.
-- 🤝 Уважение к различным мнениям, точкам зрения и опыту.
-- ✅ Конструктивная обратная связь — давать и принимать с благодарностью.
-- 🛠️ Принятие ответственности и извинения перед теми, кого затронули наши ошибки,
-  а также извлечение уроков из этого опыта.
-- 🌍 Сосредоточение на том, что лучше не только для нас лично, но и для всего сообщества.
+* Using welcoming and inclusive language
+* Being respectful of differing viewpoints and experiences
+* Gracefully accepting constructive criticism
+* Focusing on what is best for the community
+* Showing empathy towards other community members
 
-Примеры неприемлемого поведения:
+Examples of unacceptable behavior include:
 
-- ❌ Использование сексуализированных выражений, образов и любого рода сексуальное внимание или приставания.
-- ❌ Троллинг, оскорбительные или уничижительные комментарии, личные или политические нападки.
-- ❌ Публичное или приватное преследование.
-- ❌ Публикация частной информации других людей (например, физического или email-адреса) без их явного разрешения.
-- ❌ Иное поведение, которое можно обоснованно считать неуместным в профессиональной среде.
+* The use of sexualized language or imagery, and sexual attention or advances
+* Trolling, insulting or derogatory comments, and personal or political attacks
+* Public or private harassment
+* Publishing others' private information without explicit permission
+* Other conduct which could reasonably be considered inappropriate in a professional setting
 
-## Обязанности по обеспечению соблюдения
+## Scope
 
-Мейнтейнеры проекта несут ответственность за разъяснение и обеспечение соблюдения
-наших стандартов приемлемого поведения и предпринимают соответствующие и
-справедливые корректирующие действия в ответ на любое поведение, которое они
-сочтут неприемлемым, угрожающим, оскорбительным или вредоносным.
+This Code of Conduct applies to all spaces related to the **xtract-bot** project,
+including GitHub issues, pull requests, discussions, code reviews, and any
+Telegram channels or chats officially associated with the project.
 
-Мейнтейнеры имеют право и обязанность удалять, редактировать или отклонять
-комментарии, коммиты, код, правки в вики, issue и другие вклады, не
-соответствующие настоящему Кодексу поведения, и сообщать о причинах решений
-о модерации, когда это уместно.
+## Enforcement
 
-## Сфера действия
+Instances of abusive, harassing, or otherwise unacceptable behavior may be
+reported to the project maintainer:
 
-Этот Кодекс поведения применяется во всех пространствах сообщества, а также
-когда участник официально представляет сообщество в публичных пространствах.
-Примеры представления сообщества: использование официального email-адреса,
-публикации с официального аккаунта в соцсетях, выступления в качестве
-назначенного представителя на онлайн- или оффлайн-мероприятии.
+- **@MelDxKviel** (GitHub) — preferably via a private issue or direct message.
 
-## Уведомление о нарушениях
+All complaints will be reviewed and investigated promptly and fairly.
 
-О случаях оскорбительного, преследующего или иного неприемлемого поведения
-можно сообщить мейнтейнерам проекта одним из способов:
+Project maintainers are obligated to respect the privacy and security of the
+reporter of any incident.
 
-- 📨 Через приватное сообщение мейнтейнеру в GitHub.
-- ✉️ По email, указанному в профиле мейнтейнера.
+## Enforcement Guidelines
 
-Все жалобы будут рассмотрены и расследованы оперативно и справедливо.
-Все мейнтейнеры обязаны уважать конфиденциальность и безопасность того,
-кто сообщил об инциденте.
+Maintainers will follow these guidelines when enforcing this Code of Conduct:
 
-## Руководящие принципы по обеспечению соблюдения
+**1. Correction**  
+Use of inappropriate language or unprofessional behavior → Private written warning.
 
-Мейнтейнеры будут следовать этим Руководящим принципам по определению
-последствий за любые действия, которые они считают нарушением этого Кодекса:
+**2. Warning**  
+Repeated or more serious violations → Warning + temporary restriction from interaction.
 
-### 1. Исправление
+**3. Temporary Ban**  
+Serious violation of community standards → Temporary ban from the project spaces.
 
-**Влияние в сообществе**: использование неуместных выражений или иное поведение,
-считающееся непрофессиональным или нежелательным в сообществе.
+**4. Permanent Ban**  
+Pattern of violations or severe harassment → Permanent ban.
 
-**Последствие**: личное письменное предупреждение от мейнтейнеров, разъясняющее
-суть нарушения. Может быть запрошено публичное извинение.
+## Attribution
 
-### 2. Предупреждение
-
-**Влияние в сообществе**: нарушение в результате одиночного инцидента или серии действий.
-
-**Последствие**: предупреждение с последствиями за продолжение поведения. Запрет на
-взаимодействие с вовлечёнными лицами, включая нежелательное взаимодействие с теми,
-кто обеспечивает соблюдение Кодекса, в течение определённого периода времени.
-
-### 3. Временный бан
-
-**Влияние в сообществе**: серьёзное нарушение стандартов сообщества, включая
-устойчивое неприемлемое поведение.
-
-**Последствие**: временный запрет на любое взаимодействие или публичную коммуникацию
-с сообществом в течение определённого периода времени.
-
-### 4. Постоянный бан
-
-**Влияние в сообществе**: демонстрация устойчивого нарушения стандартов сообщества,
-включая устойчивое неприемлемое поведение, преследование отдельного лица или
-агрессию по отношению к группам лиц или их принижение.
-
-**Последствие**: постоянный запрет на любое публичное взаимодействие в рамках
-сообщества проекта.
-
-## Атрибуция
-
-Этот Кодекс поведения адаптирован из [Contributor Covenant][homepage], версия 2.1,
-доступной по адресу
-<https://www.contributor-covenant.org/version/2/1/code_of_conduct.html>.
-
-Руководящие принципы влияния в сообществе вдохновлены
-[лестницей соблюдения Кодекса поведения от Mozilla][mozilla coc].
-
-[homepage]: https://www.contributor-covenant.org
-[mozilla coc]: https://github.com/mozilla/diversity
-
-Ответы на распространённые вопросы об этом Кодексе можно найти в FAQ:
-<https://www.contributor-covenant.org/faq>.
-Переводы доступны на <https://www.contributor-covenant.org/translations>.
+This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org), version 3.0.
