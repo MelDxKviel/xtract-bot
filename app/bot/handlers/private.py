@@ -109,18 +109,64 @@ async def _send_media(
     caption: str,
     fallback_text: str,
 ) -> None:
+    if len(media) == 1:
+        await _send_one(message, media[0], caption=caption, fallback_text=fallback_text)
+        return
+
     try:
-        if len(media) == 1:
-            await _send_single_media(message, media[0], caption=caption)
-            return
         await message.answer_media_group(
             [
                 _input_group_media(item, caption if index == 0 else None)
                 for index, item in enumerate(media)
             ]
         )
+        return
     except TelegramBadRequest:
-        await _send_media_fallback(message, media, caption=caption, fallback_text=fallback_text)
+        pass
+
+    preview_group = _preview_input_group(media, caption)
+    if preview_group is not None:
+        try:
+            await message.answer_media_group(preview_group)
+            return
+        except TelegramBadRequest:
+            pass
+
+    await message.answer(
+        fallback_text,
+        parse_mode=ParseMode.HTML,
+        link_preview_options=DISABLED_LINK_PREVIEW,
+    )
+
+
+async def _send_one(
+    message: Message,
+    item: TweetMedia,
+    *,
+    caption: str,
+    fallback_text: str,
+) -> None:
+    try:
+        await _send_single_media(message, item, caption=caption)
+        return
+    except TelegramBadRequest:
+        pass
+    if item.preview_url:
+        try:
+            await message.answer_photo(
+                item.preview_url,
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+                show_caption_above_media=True,
+            )
+            return
+        except TelegramBadRequest:
+            pass
+    await message.answer(
+        fallback_text,
+        parse_mode=ParseMode.HTML,
+        link_preview_options=DISABLED_LINK_PREVIEW,
+    )
 
 
 async def _send_single_media(
@@ -160,51 +206,6 @@ async def _send_single_media(
         )
 
 
-async def _send_media_fallback(
-    message: Message,
-    media: list[TweetMedia],
-    *,
-    caption: str,
-    fallback_text: str,
-) -> None:
-    sent_caption = False
-    dropped_items = 0
-    for item in media:
-        item_caption = caption if not sent_caption else None
-        try:
-            await _send_single_media(message, item, caption=item_caption)
-            if item_caption:
-                sent_caption = True
-            continue
-        except TelegramBadRequest:
-            pass
-        if item.preview_url:
-            try:
-                await message.answer_photo(
-                    item.preview_url,
-                    caption=item_caption,
-                    parse_mode=ParseMode.HTML if item_caption else None,
-                    show_caption_above_media=True if item_caption else None,
-                )
-                if item_caption:
-                    sent_caption = True
-                continue
-            except TelegramBadRequest:
-                pass
-        dropped_items += 1
-    if not sent_caption:
-        await message.answer(
-            fallback_text,
-            parse_mode=ParseMode.HTML,
-            link_preview_options=DISABLED_LINK_PREVIEW,
-        )
-    if dropped_items:
-        await message.answer(
-            f"⚠️ Не удалось отправить часть медиа ({dropped_items}).",
-            link_preview_options=DISABLED_LINK_PREVIEW,
-        )
-
-
 def _input_group_media(item: TweetMedia, caption: str | None):
     parse_mode = ParseMode.HTML if caption else None
     show_above = True if caption else None
@@ -224,6 +225,27 @@ def _input_group_media(item: TweetMedia, caption: str | None):
         height=item.height,
         duration=_duration_seconds(item.duration_ms),
     )
+
+
+def _preview_input_group(media: list[TweetMedia], caption: str) -> list[InputMediaPhoto] | None:
+    items: list[InputMediaPhoto] = []
+    for item in media:
+        if item.type == "photo":
+            url = item.preview_url or item.url
+        elif item.preview_url:
+            url = item.preview_url
+        else:
+            return None
+        is_first = not items
+        items.append(
+            InputMediaPhoto(
+                media=url,
+                caption=caption if is_first else None,
+                parse_mode=ParseMode.HTML if is_first else None,
+                show_caption_above_media=True if is_first else None,
+            )
+        )
+    return items if len(items) >= 2 else None
 
 
 def _duration_seconds(duration_ms: int | None) -> int | None:
