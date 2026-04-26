@@ -4,7 +4,7 @@ import logging
 
 from aiogram import Bot, Router
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import (
     ChosenInlineResult,
     InlineKeyboardMarkup,
@@ -101,16 +101,63 @@ async def chosen_inline_result(
     original_url = share.tweet.url if share.tweet is not None else parsed.normalized_url
     button = original_post_button(original_url)
     if share.post.media:
+        media = list(share.post.media)
+        caption = share.post.caption_html
+        if len(media) >= 2:
+            await _try_send_album_private(
+                bot, result.from_user.id, media, caption=caption, reply_markup=button
+            )
         await _safe_edit_media(
             bot,
             result.inline_message_id,
-            share.post.media[0],
-            caption=share.post.caption_html,
+            media[0],
+            caption=caption,
             reply_markup=button,
         )
         return
 
     await _safe_edit(bot, result.inline_message_id, share.post.html, reply_markup=button)
+
+
+async def _try_send_album_private(
+    bot: Bot,
+    user_id: int,
+    media: list[TweetMedia],
+    *,
+    caption: str,
+    reply_markup: InlineKeyboardMarkup,
+) -> None:
+    group = [
+        _input_group_media(item, caption if index == 0 else None)
+        for index, item in enumerate(media)
+    ]
+    try:
+        await bot.send_media_group(chat_id=user_id, media=group)
+    except (TelegramBadRequest, TelegramForbiddenError):
+        logger.exception("failed to send album to private chat for user %d", user_id)
+
+
+def _input_group_media(item: TweetMedia, caption: str | None):
+    parse_mode = ParseMode.HTML if caption else None
+    if item.type == "photo":
+        return InputMediaPhoto(media=item.url, caption=caption, parse_mode=parse_mode)
+    if item.type == "video":
+        return InputMediaVideo(
+            media=item.url,
+            caption=caption,
+            parse_mode=parse_mode,
+            width=item.width,
+            height=item.height,
+            duration=_duration_seconds(item.duration_ms),
+        )
+    return InputMediaAnimation(
+        media=item.url,
+        caption=caption,
+        parse_mode=parse_mode,
+        width=item.width,
+        height=item.height,
+        duration=_duration_seconds(item.duration_ms),
+    )
 
 
 async def _safe_edit(
