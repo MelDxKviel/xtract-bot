@@ -104,7 +104,7 @@ async def chosen_inline_result(
 
     original_url = share.tweet.url if share.tweet is not None else parsed.normalized_url
     if share.post.media:
-        caption = _inline_caption(share.post.caption_html, original_url, len(share.post.media))
+        caption = append_original_link(share.post.caption_html, original_url, limit=CAPTION_LIMIT)
         await _safe_edit_media(
             bot,
             result.inline_message_id,
@@ -200,13 +200,3 @@ def _duration_seconds(duration_ms: int | None) -> int | None:
     if duration_ms is None:
         return None
     return max(1, round(duration_ms / 1000))
-
-
-def _inline_caption(caption: str, original_url: str, media_count: int) -> str:
-    extra_note = ""
-    if media_count > 1:
-        extra_note = f"\n\n📎 Еще медиа в посте: {media_count - 1}."
-    candidate = caption + extra_note
-    if len(candidate) > CAPTION_LIMIT:
-        candidate = caption
-    return append_original_link(candidate, original_url, limit=CAPTION_LIMIT)
