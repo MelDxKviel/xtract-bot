@@ -99,7 +99,7 @@ jobs:
         with:
           script: |
             const sha = '${{ github.event.pull_request.head.sha }}'.substring(0, 7);
-            const botUsername = '${{ vars.PR_BOT_USERNAME }}';
+            const botUsername = '${{ vars.PR_BOT_USERNAME }}'.replace(/^@/, '');
             const botLine = botUsername
               ? `\n🔗 **Bot:** [@${botUsername}](https://t.me/${botUsername})`
               : '';
