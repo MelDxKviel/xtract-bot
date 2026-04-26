@@ -230,8 +230,11 @@ def _input_group_media(item: TweetMedia, caption: str | None):
 def _preview_input_group(media: list[TweetMedia], caption: str) -> list[InputMediaPhoto] | None:
     items: list[InputMediaPhoto] = []
     for item in media:
-        url = item.url if item.type == "photo" else item.preview_url
-        if not url:
+        if item.type == "photo":
+            url = item.preview_url or item.url
+        elif item.preview_url:
+            url = item.preview_url
+        else:
             return None
         is_first = not items
         items.append(
