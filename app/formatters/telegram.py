@@ -8,24 +8,33 @@ from app.providers.base import TweetData, TweetMedia
 MESSAGE_LIMIT = 4096
 CAPTION_LIMIT = 1024
 MAX_MEDIA = 10
+ORIGINAL_POST_LABEL = "🔗 Оригинальный пост"
 
 
 @dataclass(frozen=True, slots=True)
 class TelegramPost:
     html: str
     caption_html: str
+    link_html: str
     media: tuple[TweetMedia, ...]
     extra_media_count: int = 0
 
 
 def format_tweet(tweet: TweetData) -> TelegramPost:
     media = tuple(tweet.media[:MAX_MEDIA])
+    link_html = original_post_link_html(tweet.url)
+    suffix_len = len("\n\n") + len(link_html)
     return TelegramPost(
-        html=render_tweet_html(tweet, limit=MESSAGE_LIMIT),
-        caption_html=render_tweet_html(tweet, limit=CAPTION_LIMIT),
+        html=render_tweet_html(tweet, limit=MESSAGE_LIMIT - suffix_len),
+        caption_html=render_tweet_html(tweet, limit=CAPTION_LIMIT - suffix_len),
+        link_html=link_html,
         media=media,
         extra_media_count=max(0, len(tweet.media) - MAX_MEDIA),
     )
+
+
+def original_post_link_html(url: str) -> str:
+    return f'<a href="{escape(url, quote=True)}">{ORIGINAL_POST_LABEL}</a>'
 
 
 def render_tweet_html(tweet: TweetData, *, limit: int = MESSAGE_LIMIT) -> str:

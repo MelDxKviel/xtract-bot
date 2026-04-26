@@ -7,6 +7,7 @@ from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import (
     ChosenInlineResult,
+    InlineKeyboardMarkup,
     InlineQuery,
     InlineQueryResultArticle,
     InputMediaAnimation,
@@ -15,12 +16,7 @@ from aiogram.types import (
     InputTextMessageContent,
 )
 
-from app.bot.ui import (
-    DISABLED_LINK_PREVIEW,
-    append_original_link,
-    original_post_button,
-)
-from app.formatters.telegram import CAPTION_LIMIT, MESSAGE_LIMIT
+from app.bot.ui import DISABLED_LINK_PREVIEW, original_post_button
 from app.providers.base import TweetMedia
 from app.services import TweetShareService
 from app.utils.urls import extract_first_tweet_url
@@ -103,18 +99,18 @@ async def chosen_inline_result(
         return
 
     original_url = share.tweet.url if share.tweet is not None else parsed.normalized_url
+    button = original_post_button(original_url)
     if share.post.media:
-        caption = append_original_link(share.post.caption_html, original_url, limit=CAPTION_LIMIT)
         await _safe_edit_media(
             bot,
             result.inline_message_id,
             share.post.media[0],
-            caption=caption,
+            caption=share.post.caption_html,
+            reply_markup=button,
         )
         return
 
-    text = append_original_link(share.post.html, original_url, limit=MESSAGE_LIMIT)
-    await _safe_edit(bot, result.inline_message_id, text)
+    await _safe_edit(bot, result.inline_message_id, share.post.html, reply_markup=button)
 
 
 async def _safe_edit(
@@ -122,7 +118,7 @@ async def _safe_edit(
     inline_message_id: str,
     text: str,
     *,
-    reply_markup=None,
+    reply_markup: InlineKeyboardMarkup | None = None,
 ) -> None:
     try:
         await bot.edit_message_text(
@@ -142,29 +138,32 @@ async def _safe_edit_media(
     item: TweetMedia,
     *,
     caption: str,
+    reply_markup: InlineKeyboardMarkup,
 ) -> None:
     try:
         await bot.edit_message_media(
             inline_message_id=inline_message_id,
             media=_input_media(item, caption),
+            reply_markup=reply_markup,
         )
+        return
     except TelegramBadRequest:
         logger.exception("failed to edit inline media")
-        if item.preview_url:
-            try:
-                await bot.edit_message_media(
-                    inline_message_id=inline_message_id,
-                    media=InputMediaPhoto(
-                        media=item.preview_url,
-                        caption=caption,
-                        parse_mode=ParseMode.HTML,
-                        show_caption_above_media=True,
-                    ),
-                )
-                return
-            except TelegramBadRequest:
-                logger.exception("failed to edit inline media preview")
-        await _safe_edit(bot, inline_message_id, caption)
+    if item.preview_url:
+        try:
+            await bot.edit_message_media(
+                inline_message_id=inline_message_id,
+                media=InputMediaPhoto(
+                    media=item.preview_url,
+                    caption=caption,
+                    parse_mode=ParseMode.HTML,
+                ),
+                reply_markup=reply_markup,
+            )
+            return
+        except TelegramBadRequest:
+            logger.exception("failed to edit inline media preview")
+    await _safe_edit(bot, inline_message_id, caption, reply_markup=reply_markup)
 
 
 def _input_media(item: TweetMedia, caption: str):
@@ -173,14 +172,12 @@ def _input_media(item: TweetMedia, caption: str):
             media=item.url,
             caption=caption,
             parse_mode=ParseMode.HTML,
-            show_caption_above_media=True,
         )
     if item.type == "video":
         return InputMediaVideo(
             media=item.url,
             caption=caption,
             parse_mode=ParseMode.HTML,
-            show_caption_above_media=True,
             width=item.width,
             height=item.height,
             duration=_duration_seconds(item.duration_ms),
@@ -189,7 +186,6 @@ def _input_media(item: TweetMedia, caption: str):
         media=item.url,
         caption=caption,
         parse_mode=ParseMode.HTML,
-        show_caption_above_media=True,
         width=item.width,
         height=item.height,
         duration=_duration_seconds(item.duration_ms),
