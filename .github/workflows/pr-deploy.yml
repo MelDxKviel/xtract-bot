@@ -1,0 +1,150 @@
+name: PR Deploy
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+concurrency:
+  group: pr-deploy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build PR Image
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set lowercase image tag
+        id: vars
+        run: echo "image_tag=ghcr.io/${GITHUB_REPOSITORY,,}:pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push PR image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.vars.outputs.image_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy PR Bot
+    if: github.event.action != 'closed'
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          PR_BOT_TOKEN: ${{ secrets.PR_BOT_TOKEN }}
+          PR_ADMIN_IDS: ${{ secrets.PR_ADMIN_IDS }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          envs: PR_BOT_TOKEN,PR_ADMIN_IDS,GH_TOKEN,GH_ACTOR,REPO,PR_NUM
+          script: |
+            set -e
+            REPO_LC=$(echo "$REPO" | tr '[:upper:]' '[:lower:]')
+
+            # Create PR database (ignore error if already exists)
+            POSTGRES_CID=$(docker compose -f ${{ secrets.DEPLOY_PATH }}/docker-compose.yml ps -q postgres 2>/dev/null || true)
+            if [ -n "$POSTGRES_CID" ]; then
+              docker exec "$POSTGRES_CID" psql -U xtract -c "CREATE DATABASE xtract_pr_${PR_NUM};" 2>/dev/null || true
+            fi
+
+            # Remove old PR bot container if exists
+            docker rm -f "xtract-bot-pr-${PR_NUM}" 2>/dev/null || true
+
+            # Pull fresh PR image
+            echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+            docker pull "ghcr.io/${REPO_LC}:pr-${PR_NUM}"
+
+            # Start PR bot (host network so it can reach postgres on 127.0.0.1:5432)
+            docker run -d \
+              --name "xtract-bot-pr-${PR_NUM}" \
+              --network host \
+              --restart unless-stopped \
+              -e BOT_TOKEN="$PR_BOT_TOKEN" \
+              -e DATABASE_URL="postgresql+asyncpg://xtract:xtract@127.0.0.1:5432/xtract_pr_${PR_NUM}" \
+              -e ADMIN_IDS="$PR_ADMIN_IDS" \
+              -e TWEET_PROVIDER="public_embed" \
+              -e ACCESS_WHITELIST_ENABLED="false" \
+              "ghcr.io/${REPO_LC}:pr-${PR_NUM}" \
+              sh -c "alembic upgrade head && python -m app.main"
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = '${{ github.event.pull_request.head.sha }}'.substring(0, 7);
+            const botUsername = '${{ vars.PR_BOT_USERNAME }}'.replace(/^@/, '');
+            const botLine = botUsername
+              ? `\n🔗 **Bot:** [@${botUsername}](https://t.me/${botUsername})`
+              : '';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ github.event.pull_request.number }},
+              body: [
+                `🤖 **Test environment deployed** for \`${sha}\``,
+                botLine,
+                '',
+                '> `TWEET_PROVIDER=public_embed` · `ACCESS_WHITELIST_ENABLED=false`',
+              ].join('\n'),
+            });
+
+  cleanup:
+    name: Cleanup PR Bot
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Cleanup via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          envs: GH_TOKEN,GH_ACTOR,REPO,PR_NUM
+          script: |
+            REPO_LC=$(echo "$REPO" | tr '[:upper:]' '[:lower:]')
+
+            # Stop and remove PR bot container
+            docker rm -f "xtract-bot-pr-${PR_NUM}" 2>/dev/null || true
+
+            # Drop PR database
+            POSTGRES_CID=$(docker compose -f ${{ secrets.DEPLOY_PATH }}/docker-compose.yml ps -q postgres 2>/dev/null || true)
+            if [ -n "$POSTGRES_CID" ]; then
+              docker exec "$POSTGRES_CID" psql -U xtract -c "DROP DATABASE IF EXISTS xtract_pr_${PR_NUM};" 2>/dev/null || true
+            fi
+
+            # Remove local copy of PR image
+            echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+            docker rmi "ghcr.io/${REPO_LC}:pr-${PR_NUM}" 2>/dev/null || true
