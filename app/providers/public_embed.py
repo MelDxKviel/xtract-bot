@@ -720,7 +720,14 @@ def _canonical_author_url(username: str) -> str:
 
 def _looks_like_twitter_media(url: str) -> bool:
     host = urlparse(url).netloc.lower()
-    return host.endswith("twimg.com") or host.endswith("twitter.com") or host.endswith("x.com")
+    return (
+        host == "twimg.com"
+        or host.endswith(".twimg.com")
+        or host == "twitter.com"
+        or host.endswith(".twitter.com")
+        or host == "x.com"
+        or host.endswith(".x.com")
+    )
 
 
 def _normalize_text(value: str) -> str:
