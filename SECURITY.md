@@ -1,72 +1,72 @@
-# 🔐 Политика безопасности
+# 🔐 Security Policy
 
-Спасибо, что заботитесь о безопасности **Xtract Bot**! Этот документ описывает,
-как сообщить об уязвимости и каких версий касается поддержка.
+Thank you for caring about the security of **Xtract Bot**! This document describes
+how to report a vulnerability and which versions are supported.
 
-## Поддерживаемые версии
+## Supported Versions
 
-В рамках MVP поддерживается только последняя версия из ветки `main`.
-Исправления безопасности выпускаются в следующих минорных или патч-релизах.
+Only the latest version from the `main` branch is supported under the MVP scope.
+Security fixes are released in the next minor or patch releases.
 
-| Версия    | Поддержка                |
+| Version   | Support                  |
 | --------- | ------------------------ |
-| `main`    | ✅ активная поддержка    |
-| `< 0.1.0` | ❌ не поддерживается     |
+| `main`    | ✅ actively supported    |
+| `< 0.1.0` | ❌ not supported         |
 
-## Как сообщить об уязвимости
+## Reporting a Vulnerability
 
-> ⚠️ **Пожалуйста, не создавайте публичные issue для уязвимостей.**
-> Публичное раскрытие до выпуска фикса подвергает пользователей риску.
+> ⚠️ **Please do not create public issues for vulnerabilities.**
+> Public disclosure before a fix is released puts users at risk.
 
-Используйте один из приватных каналов:
+Use one of the private channels:
 
-1. **GitHub Security Advisories** — самый предпочтительный путь:
-   откройте новое advisory на странице
+1. **GitHub Security Advisories** — the preferred path:
+   open a new advisory at
    [Security → Report a vulnerability](https://github.com/MelDxKviel/xtract-bot/security/advisories/new).
-2. **Email** — отправьте отчёт мейнтейнеру через email,
-   указанный в его GitHub-профиле, с темой `[xtract-bot][security] <краткое описание>`.
+2. **Email** — send a report to the maintainer via the email
+   listed in their GitHub profile, with the subject `[xtract-bot][security] <brief description>`.
 
-В письме укажите:
+Include in your report:
 
-- Затронутую версию или коммит.
-- Подробное описание уязвимости и потенциального воздействия.
-- Шаги для воспроизведения, минимальный proof-of-concept (если возможно).
-- Ваши контакты для уточняющих вопросов.
-- Желаемый кредит в advisory (имя / ник / организация) либо просьбу остаться анонимным.
+- Affected version or commit.
+- Detailed description of the vulnerability and potential impact.
+- Reproduction steps, minimal proof-of-concept (if possible).
+- Your contact details for follow-up questions.
+- Desired credit in the advisory (name / handle / organization) or a request to remain anonymous.
 
-## Что происходит после отчёта
+## What Happens After a Report
 
-| Срок         | Действие                                                                |
-| ------------ | ----------------------------------------------------------------------- |
-| **48 часов** | подтверждение получения отчёта                                          |
-| **7 дней**   | первичная оценка: подтверждение, severity, план действий                |
-| **30 дней**  | целевой срок выпуска фикса для проблем с severity High/Critical         |
-| **по фиксу** | публичное advisory, упоминание репортёра (если согласен) и changelog    |
+| Timeline     | Action                                                                     |
+| ------------ | -------------------------------------------------------------------------- |
+| **48 hours** | Acknowledgement of receipt                                                 |
+| **7 days**   | Initial assessment: confirmation, severity, action plan                    |
+| **30 days**  | Target fix release for High/Critical severity issues                       |
+| **On fix**   | Public advisory, reporter credit (if agreed), and changelog entry         |
 
-Если уязвимость затрагивает зависимости (aiogram, SQLAlchemy, Alembic, asyncpg, httpx и др.),
-мы скоординируем раскрытие с upstream-проектами.
+If the vulnerability affects dependencies (aiogram, SQLAlchemy, Alembic, asyncpg, httpx, etc.),
+we will coordinate disclosure with upstream projects.
 
-## Зона ответственности
+## Scope
 
-В скоп политики входят:
+In scope:
 
-- Код в этом репозитории (`app/`, `migrations/`, `Dockerfile`, `docker-compose.yml`).
-- Конфигурации CI/CD (`.github/workflows/`).
-- Документация, которая может ввести пользователя в заблуждение по вопросам безопасности.
+- Code in this repository (`app/`, `migrations/`, `Dockerfile`, `docker-compose.yml`).
+- CI/CD configurations (`.github/workflows/`).
+- Documentation that could mislead users on security matters.
 
-Вне скопа:
+Out of scope:
 
-- Уязвимости в публичных эндпоинтах FxTwitter / VxTwitter / X API — сообщайте их upstream.
-- Атаки, требующие физического или административного доступа к серверу пользователя.
-- Социальная инженерия в отношении мейнтейнеров.
+- Vulnerabilities in public FxTwitter / VxTwitter / X API endpoints — report those upstream.
+- Attacks requiring physical or administrative access to the user's server.
+- Social engineering targeting maintainers.
 
-## Лучшие практики при self-hosting
+## Self-Hosting Best Practices
 
-- 🔑 **Никогда** не коммитьте `.env`, `BOT_TOKEN`, `X_BEARER_TOKEN`,
-  `WEBHOOK_SECRET`, `TWEET_PROVIDER_API_KEY` и любые другие секреты.
-- 🛡️ Ограничьте доступ к Postgres только сервису `bot` или приватной сети.
-- 👥 Используйте `ACCESS_WHITELIST_ENABLED=true` и узкий список `ADMIN_IDS` в продакшене.
-- 🔄 Регулярно обновляйте зависимости (`uv lock --upgrade`) и базовый образ Docker.
-- 📜 Включайте структурированные логи (`LOG_LEVEL=INFO` или выше) и собирайте их централизованно.
+- 🔑 **Never** commit `.env`, `BOT_TOKEN`, `X_BEARER_TOKEN`,
+  `WEBHOOK_SECRET`, `TWEET_PROVIDER_API_KEY`, or any other secrets.
+- 🛡️ Restrict Postgres access to the `bot` service or a private network only.
+- 👥 Use `ACCESS_WHITELIST_ENABLED=true` and a narrow `ADMIN_IDS` list in production.
+- 🔄 Regularly update dependencies (`uv lock --upgrade`) and the base Docker image.
+- 📜 Enable structured logs (`LOG_LEVEL=INFO` or higher) and collect them centrally.
 
-Спасибо за ответственное раскрытие уязвимостей! 🙏
+Thank you for responsible disclosure! 🙏
