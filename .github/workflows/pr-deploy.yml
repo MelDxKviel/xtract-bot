@@ -89,7 +89,7 @@ jobs:
               -e BOT_TOKEN="$PR_BOT_TOKEN" \
               -e DATABASE_URL="postgresql+asyncpg://xtract:xtract@127.0.0.1:5432/xtract_pr_${PR_NUM}" \
               -e ADMIN_IDS="$PR_ADMIN_IDS" \
-              -e TWEET_PROVIDER="fake" \
+              -e TWEET_PROVIDER="public_embed" \
               -e ACCESS_WHITELIST_ENABLED="false" \
               "ghcr.io/${REPO_LC}:pr-${PR_NUM}" \
               sh -c "alembic upgrade head && python -m app.main"
