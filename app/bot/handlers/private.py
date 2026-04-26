@@ -4,9 +4,9 @@ from aiogram import F, Router
 from aiogram.enums import ChatType, ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
-from aiogram.types import InputMediaPhoto, InputMediaVideo, Message
+from aiogram.types import InlineKeyboardMarkup, InputMediaPhoto, InputMediaVideo, Message
 
-from app.bot.ui import DISABLED_LINK_PREVIEW
+from app.bot.ui import DISABLED_LINK_PREVIEW, original_post_button
 from app.providers.base import TweetMedia
 from app.services import AccessService, ShareResult, TweetShareService
 from app.utils.urls import extract_first_tweet_url
@@ -86,17 +86,26 @@ async def _send_share_result(message: Message, result: ShareResult) -> None:
         return
 
     post = result.post
-    caption = f"{post.caption_html}\n\n{post.link_html}"
-    text = f"{post.html}\n\n{post.link_html}"
+    url = result.tweet.url if result.tweet is not None else (result.normalized_url or "")
+    button = original_post_button(url)
+    caption_group = f"{post.caption_html}\n\n{post.link_html}"
 
     if post.media:
-        await _send_media(message, list(post.media), caption=caption, fallback_text=text)
+        await _send_media(
+            message,
+            list(post.media),
+            caption=post.caption_html,
+            caption_group=caption_group,
+            fallback_text=post.html,
+            reply_markup=button,
+        )
         return
 
     await message.answer(
-        text,
+        post.html,
         parse_mode=ParseMode.HTML,
         link_preview_options=DISABLED_LINK_PREVIEW,
+        reply_markup=button,
     )
 
 
@@ -105,13 +114,15 @@ async def _send_media(
     media: list[TweetMedia],
     *,
     caption: str,
+    caption_group: str,
     fallback_text: str,
+    reply_markup: InlineKeyboardMarkup,
 ) -> None:
     if len(media) >= 2:
         try:
             await message.answer_media_group(
                 [
-                    _input_group_media(item, caption if index == 0 else None)
+                    _input_group_media(item, caption_group if index == 0 else None)
                     for index, item in enumerate(media)
                 ]
             )
@@ -119,7 +130,7 @@ async def _send_media(
         except TelegramBadRequest:
             pass
 
-        preview_group = _preview_input_group(media, caption)
+        preview_group = _preview_input_group(media, caption_group)
         if preview_group is not None:
             try:
                 await message.answer_media_group(preview_group)
@@ -131,7 +142,8 @@ async def _send_media(
     any_sent = False
     for item in media:
         item_caption = caption if not sent_caption else None
-        if await _try_send_one(message, item, caption=item_caption):
+        item_markup = reply_markup if not sent_caption else None
+        if await _try_send_one(message, item, caption=item_caption, reply_markup=item_markup):
             any_sent = True
             if item_caption is not None:
                 sent_caption = True
@@ -141,6 +153,7 @@ async def _send_media(
             fallback_text,
             parse_mode=ParseMode.HTML,
             link_preview_options=DISABLED_LINK_PREVIEW,
+            reply_markup=reply_markup,
         )
 
 
@@ -149,9 +162,10 @@ async def _try_send_one(
     item: TweetMedia,
     *,
     caption: str | None,
+    reply_markup: InlineKeyboardMarkup | None,
 ) -> bool:
     try:
-        await _send_single_media(message, item, caption=caption)
+        await _send_single_media(message, item, caption=caption, reply_markup=reply_markup)
         return True
     except TelegramBadRequest:
         pass
@@ -161,6 +175,7 @@ async def _try_send_one(
                 item.preview_url,
                 caption=caption,
                 parse_mode=ParseMode.HTML if caption else None,
+                reply_markup=reply_markup,
             )
             return True
         except TelegramBadRequest:
@@ -173,6 +188,7 @@ async def _send_single_media(
     item: TweetMedia,
     *,
     caption: str | None,
+    reply_markup: InlineKeyboardMarkup | None,
 ) -> None:
     parse_mode = ParseMode.HTML if caption else None
     if item.type == "photo":
@@ -180,6 +196,7 @@ async def _send_single_media(
             item.url,
             caption=caption,
             parse_mode=parse_mode,
+            reply_markup=reply_markup,
         )
     elif item.type == "gif":
         await message.answer_animation(
@@ -189,6 +206,7 @@ async def _send_single_media(
             width=item.width,
             height=item.height,
             duration=_duration_seconds(item.duration_ms),
+            reply_markup=reply_markup,
         )
     else:
         await message.answer_video(
@@ -198,6 +216,7 @@ async def _send_single_media(
             width=item.width,
             height=item.height,
             duration=_duration_seconds(item.duration_ms),
+            reply_markup=reply_markup,
         )
 
 
