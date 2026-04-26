@@ -6,8 +6,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import InputMediaPhoto, InputMediaVideo, Message
 
-from app.bot.ui import DISABLED_LINK_PREVIEW, append_original_link
-from app.formatters.telegram import CAPTION_LIMIT, MESSAGE_LIMIT
+from app.bot.ui import DISABLED_LINK_PREVIEW
 from app.providers.base import TweetMedia
 from app.services import AccessService, ShareResult, TweetShareService
 from app.utils.urls import extract_first_tweet_url
@@ -87,9 +86,8 @@ async def _send_share_result(message: Message, result: ShareResult) -> None:
         return
 
     post = result.post
-    original_url = _result_original_url(result)
-    caption = append_original_link(post.caption_html, original_url, limit=CAPTION_LIMIT)
-    text = append_original_link(post.html, original_url, limit=MESSAGE_LIMIT)
+    caption = f"{post.caption_html}\n\n{post.link_html}"
+    text = f"{post.html}\n\n{post.link_html}"
 
     if post.media:
         await _send_media(message, list(post.media), caption=caption, fallback_text=text)
@@ -109,46 +107,52 @@ async def _send_media(
     caption: str,
     fallback_text: str,
 ) -> None:
-    if len(media) == 1:
-        await _send_one(message, media[0], caption=caption, fallback_text=fallback_text)
-        return
-
-    try:
-        await message.answer_media_group(
-            [
-                _input_group_media(item, caption if index == 0 else None)
-                for index, item in enumerate(media)
-            ]
-        )
-        return
-    except TelegramBadRequest:
-        pass
-
-    preview_group = _preview_input_group(media, caption)
-    if preview_group is not None:
+    if len(media) >= 2:
         try:
-            await message.answer_media_group(preview_group)
+            await message.answer_media_group(
+                [
+                    _input_group_media(item, caption if index == 0 else None)
+                    for index, item in enumerate(media)
+                ]
+            )
             return
         except TelegramBadRequest:
             pass
 
-    await message.answer(
-        fallback_text,
-        parse_mode=ParseMode.HTML,
-        link_preview_options=DISABLED_LINK_PREVIEW,
-    )
+        preview_group = _preview_input_group(media, caption)
+        if preview_group is not None:
+            try:
+                await message.answer_media_group(preview_group)
+                return
+            except TelegramBadRequest:
+                pass
+
+    sent_caption = False
+    any_sent = False
+    for item in media:
+        item_caption = caption if not sent_caption else None
+        if await _try_send_one(message, item, caption=item_caption):
+            any_sent = True
+            if item_caption is not None:
+                sent_caption = True
+
+    if not any_sent or not sent_caption:
+        await message.answer(
+            fallback_text,
+            parse_mode=ParseMode.HTML,
+            link_preview_options=DISABLED_LINK_PREVIEW,
+        )
 
 
-async def _send_one(
+async def _try_send_one(
     message: Message,
     item: TweetMedia,
     *,
-    caption: str,
-    fallback_text: str,
-) -> None:
+    caption: str | None,
+) -> bool:
     try:
         await _send_single_media(message, item, caption=caption)
-        return
+        return True
     except TelegramBadRequest:
         pass
     if item.preview_url:
@@ -156,17 +160,12 @@ async def _send_one(
             await message.answer_photo(
                 item.preview_url,
                 caption=caption,
-                parse_mode=ParseMode.HTML,
-                show_caption_above_media=True,
+                parse_mode=ParseMode.HTML if caption else None,
             )
-            return
+            return True
         except TelegramBadRequest:
             pass
-    await message.answer(
-        fallback_text,
-        parse_mode=ParseMode.HTML,
-        link_preview_options=DISABLED_LINK_PREVIEW,
-    )
+    return False
 
 
 async def _send_single_media(
@@ -176,20 +175,17 @@ async def _send_single_media(
     caption: str | None,
 ) -> None:
     parse_mode = ParseMode.HTML if caption else None
-    show_above = True if caption else None
     if item.type == "photo":
         await message.answer_photo(
             item.url,
             caption=caption,
             parse_mode=parse_mode,
-            show_caption_above_media=show_above,
         )
     elif item.type == "gif":
         await message.answer_animation(
             item.url,
             caption=caption,
             parse_mode=parse_mode,
-            show_caption_above_media=show_above,
             width=item.width,
             height=item.height,
             duration=_duration_seconds(item.duration_ms),
@@ -199,7 +195,6 @@ async def _send_single_media(
             item.url,
             caption=caption,
             parse_mode=parse_mode,
-            show_caption_above_media=show_above,
             width=item.width,
             height=item.height,
             duration=_duration_seconds(item.duration_ms),
@@ -208,19 +203,16 @@ async def _send_single_media(
 
 def _input_group_media(item: TweetMedia, caption: str | None):
     parse_mode = ParseMode.HTML if caption else None
-    show_above = True if caption else None
     if item.type == "photo":
         return InputMediaPhoto(
             media=item.url,
             caption=caption,
             parse_mode=parse_mode,
-            show_caption_above_media=show_above,
         )
     return InputMediaVideo(
         media=item.url,
         caption=caption,
         parse_mode=parse_mode,
-        show_caption_above_media=show_above,
         width=item.width,
         height=item.height,
         duration=_duration_seconds(item.duration_ms),
@@ -242,7 +234,6 @@ def _preview_input_group(media: list[TweetMedia], caption: str) -> list[InputMed
                 media=url,
                 caption=caption if is_first else None,
                 parse_mode=ParseMode.HTML if is_first else None,
-                show_caption_above_media=True if is_first else None,
             )
         )
     return items if len(items) >= 2 else None
@@ -252,9 +243,3 @@ def _duration_seconds(duration_ms: int | None) -> int | None:
     if duration_ms is None:
         return None
     return max(1, round(duration_ms / 1000))
-
-
-def _result_original_url(result: ShareResult) -> str:
-    if result.tweet is not None:
-        return result.tweet.url
-    return result.normalized_url or result.source_url or "https://x.com"
