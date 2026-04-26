@@ -29,12 +29,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set lowercase image tag
+        id: vars
+        run: echo "image_tag=ghcr.io/${GITHUB_REPOSITORY,,}:pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push PR image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}:pr-${{ github.event.pull_request.number }}
+          tags: ${{ steps.vars.outputs.image_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -62,6 +66,7 @@ jobs:
           envs: PR_BOT_TOKEN,PR_ADMIN_IDS,GH_TOKEN,GH_ACTOR,REPO,PR_NUM
           script: |
             set -e
+            REPO_LC=$(echo "$REPO" | tr '[:upper:]' '[:lower:]')
 
             # Create PR database (ignore error if already exists)
             POSTGRES_CID=$(docker compose -f ${{ secrets.DEPLOY_PATH }}/docker-compose.yml ps -q postgres 2>/dev/null || true)
@@ -74,7 +79,7 @@ jobs:
 
             # Pull fresh PR image
             echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
-            docker pull "ghcr.io/${REPO}:pr-${PR_NUM}"
+            docker pull "ghcr.io/${REPO_LC}:pr-${PR_NUM}"
 
             # Start PR bot (host network so it can reach postgres on 127.0.0.1:5432)
             docker run -d \
@@ -86,7 +91,7 @@ jobs:
               -e ADMIN_IDS="$PR_ADMIN_IDS" \
               -e TWEET_PROVIDER="fake" \
               -e ACCESS_WHITELIST_ENABLED="false" \
-              "ghcr.io/${REPO}:pr-${PR_NUM}" \
+              "ghcr.io/${REPO_LC}:pr-${PR_NUM}" \
               sh -c "alembic upgrade head && python -m app.main"
 
       - name: Comment on PR
@@ -129,6 +134,8 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           envs: GH_TOKEN,GH_ACTOR,REPO,PR_NUM
           script: |
+            REPO_LC=$(echo "$REPO" | tr '[:upper:]' '[:lower:]')
+
             # Stop and remove PR bot container
             docker rm -f "xtract-bot-pr-${PR_NUM}" 2>/dev/null || true
 
@@ -140,4 +147,4 @@ jobs:
 
             # Remove local copy of PR image
             echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
-            docker rmi "ghcr.io/${REPO}:pr-${PR_NUM}" 2>/dev/null || true
+            docker rmi "ghcr.io/${REPO_LC}:pr-${PR_NUM}" 2>/dev/null || true
