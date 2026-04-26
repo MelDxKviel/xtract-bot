@@ -111,7 +111,7 @@ jobs:
                 `🤖 **Test environment deployed** for \`${sha}\``,
                 botLine,
                 '',
-                '> `TWEET_PROVIDER=fake` · `ACCESS_WHITELIST_ENABLED=false`',
+                '> `TWEET_PROVIDER=public_embed` · `ACCESS_WHITELIST_ENABLED=false`',
               ].join('\n'),
             });
 
