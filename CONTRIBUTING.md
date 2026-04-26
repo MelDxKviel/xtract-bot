@@ -1,166 +1,165 @@
-# 🤝 Гайд для контрибьюторов
+# 🤝 Contributing Guide
 
-Спасибо за интерес к **Xtract Bot**! Любой вклад — от исправления опечаток
-до новых фич — приветствуется. Этот документ поможет быстро встроиться в процесс.
+Thank you for your interest in **Xtract Bot**! Any contribution — from fixing typos
+to implementing new features — is welcome. This document will help you get started quickly.
 
-> 📜 Прежде чем начинать, прочтите [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
-> Об уязвимостях сообщайте по правилам [SECURITY.md](SECURITY.md), а не в публичных issue.
+> 📜 Before you begin, please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+> Report vulnerabilities following [SECURITY.md](SECURITY.md), not in public issues.
 
 ---
 
-## 📋 Содержание
+## 📋 Table of Contents
 
-- [Способы помочь](#-способы-помочь)
-- [Подготовка окружения](#-подготовка-окружения)
-- [Рабочий процесс](#-рабочий-процесс)
-- [Стиль кода](#-стиль-кода)
-- [Тесты](#-тесты)
-- [Коммиты](#-коммиты)
+- [Ways to help](#-ways-to-help)
+- [Setting up the environment](#-setting-up-the-environment)
+- [Workflow](#-workflow)
+- [Code style](#-code-style)
+- [Tests](#-tests)
+- [Commits](#-commits)
 - [Pull Request](#-pull-request)
-- [Создание issue](#-создание-issue)
+- [Creating an issue](#-creating-an-issue)
 
 ---
 
-## 💡 Способы помочь
+## 💡 Ways to Help
 
-- 🐛 Сообщить о баге через issue с шагами воспроизведения.
-- ✨ Предложить новую фичу или улучшение.
-- 📝 Улучшить документацию (README, комментарии, примеры).
-- 🧪 Покрыть код тестами.
-- 🧩 Реализовать новый `TweetProvider` или улучшить существующие.
-- 🌍 Помочь с переводом документации.
+- 🐛 Report a bug via an issue with reproduction steps.
+- ✨ Suggest a new feature or improvement.
+- 📝 Improve documentation (README, comments, examples).
+- 🧪 Add test coverage.
+- 🧩 Implement a new `TweetProvider` or improve existing ones.
+- 🌍 Help with documentation translations.
 
 ---
 
-## 🛠 Подготовка окружения
+## 🛠 Setting Up the Environment
 
-Требования: Python 3.12+, Docker (опционально), `uv`.
+Requirements: Python 3.12+, Docker (optional), `uv`.
 
 ```bash
-# 1. Форкните репозиторий и склонируйте свой форк
+# 1. Fork the repository and clone your fork
 git clone https://github.com/<your-username>/xtract-bot.git
 cd xtract-bot
 
-# 2. Установите uv (если ещё не установлен)
+# 2. Install uv (if not already installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 3. Установите зависимости вместе с dev-инструментами
+# 3. Install dependencies including dev tools
 uv sync --extra dev
 
-# 4. Подготовьте .env
+# 4. Prepare .env
 cp .env.example .env
-# отредактируйте BOT_TOKEN и др.
+# edit BOT_TOKEN etc.
 
-# 5. Поднимите Postgres (например, через docker compose)
+# 5. Start Postgres (e.g. via docker compose)
 docker compose up -d postgres
 
-# 6. Примените миграции
+# 6. Apply migrations
 uv run alembic upgrade head
 
-# 7. Запустите бота
+# 7. Run the bot
 uv run python -m app.main
 ```
 
-> 💡 Для разработки удобно использовать `TWEET_PROVIDER=fake` —
-> тогда не нужны живые ключи к X/Twitter.
+> 💡 For development it is convenient to use `TWEET_PROVIDER=fake` —
+> no live X/Twitter credentials are needed.
 
 ---
 
-## 🔄 Рабочий процесс
+## 🔄 Workflow
 
-1. **Найдите или создайте issue** — обсудите идею до начала большой работы.
-2. **Сделайте форк** репозитория и создайте ветку:
+1. **Find or create an issue** — discuss the idea before starting large work.
+2. **Fork** the repository and create a branch:
    ```bash
    git checkout -b feature/short-description
-   # или
+   # or
    git checkout -b fix/short-description
    ```
-3. **Внесите изменения** небольшими атомарными коммитами.
-4. **Запустите проверки** локально (см. ниже).
-5. **Создайте Pull Request** в `main` с понятным описанием.
+3. **Make changes** in small, atomic commits.
+4. **Run checks** locally (see below).
+5. **Open a Pull Request** to `main` with a clear description.
 
-### Соглашение об именах веток
+### Branch naming conventions
 
-| Префикс       | Назначение                          | Пример                               |
-| ------------- | ----------------------------------- | ------------------------------------ |
-| `feature/`    | Новая функциональность              | `feature/inline-media-group`         |
-| `fix/`        | Исправление бага                    | `fix/cache-ttl-overflow`             |
-| `docs/`       | Документация                        | `docs/provider-comparison`           |
-| `refactor/`   | Рефакторинг без смены поведения     | `refactor/extract-tweet-formatter`   |
-| `test/`       | Только тесты                        | `test/public-embed-fallback`         |
-| `chore/`      | Сборка, CI, зависимости             | `chore/bump-aiogram`                 |
+| Prefix        | Purpose                            | Example                              |
+| ------------- | ---------------------------------- | ------------------------------------ |
+| `feature/`    | New functionality                  | `feature/inline-media-group`         |
+| `fix/`        | Bug fix                            | `fix/cache-ttl-overflow`             |
+| `docs/`       | Documentation                      | `docs/provider-comparison`           |
+| `refactor/`   | Refactoring without behavior change| `refactor/extract-tweet-formatter`   |
+| `test/`       | Tests only                         | `test/public-embed-fallback`         |
+| `chore/`      | Build, CI, dependencies            | `chore/bump-aiogram`                 |
 
 ---
 
-## 🎨 Стиль кода
+## 🎨 Code Style
 
-Проект использует [`ruff`](https://docs.astral.sh/ruff/) и для линтинга, и для форматирования.
+The project uses [`ruff`](https://docs.astral.sh/ruff/) for both linting and formatting.
 
 ```bash
-uv run ruff check .          # линтинг
-uv run ruff check . --fix    # автоисправления
-uv run ruff format .         # форматирование
-uv run ruff format --check . # проверка без правок (как в CI)
+uv run ruff check .          # lint
+uv run ruff check . --fix    # auto-fix
+uv run ruff format .         # format
+uv run ruff format --check . # check without changes (as in CI)
 ```
 
-Дополнительно:
+Additional guidelines:
 
-- 🐍 Целевая версия Python — **3.12** (см. `pyproject.toml`).
-- 📏 Длина строки — **100** символов.
-- 📦 Импорты сортируются автоматически (`I` правило ruff).
-- 🧠 Используйте полные type hints для публичных функций и методов.
-- 🏷️ Имена — на английском, осмысленные; избегайте сокращений.
-- 🚫 Не добавляйте комментарии-«перевод кода»; объясняйте только нетривиальное «почему».
+- 🐍 Target Python version — **3.12** (see `pyproject.toml`).
+- 📏 Line length — **100** characters.
+- 📦 Imports are sorted automatically (ruff `I` rule).
+- 🧠 Use full type hints for public functions and methods.
+- 🏷️ Names in English, descriptive; avoid abbreviations.
+- 🚫 Do not add code-translation comments; only explain non-obvious "why".
 
 ---
 
-## 🧪 Тесты
+## 🧪 Tests
 
-Используется `pytest` + `pytest-asyncio` (`asyncio_mode = "auto"`).
+Uses `pytest` + `pytest-asyncio` (`asyncio_mode = "auto"`).
 
 ```bash
-uv run pytest                       # все тесты
-uv run pytest tests/test_foo.py     # один файл
-uv run pytest -k "embed"            # по подстроке
-uv run pytest -x --ff               # стоп на первом фейле, начать с упавших
+uv run pytest                       # all tests
+uv run pytest tests/test_foo.py     # single file
+uv run pytest -k "embed"            # filter by substring
+uv run pytest -x --ff               # stop on first failure, start from failed
 ```
 
-Чек-лист для тестов:
+Test checklist:
 
-- ✅ Новая логика — новые тесты.
-- ✅ Найден баг — сначала тест, который его воспроизводит, потом фикс.
-- ✅ Не используйте сетевые запросы в юнит-тестах; мокайте внешние провайдеры.
-- ✅ Структуру `arrange / act / assert` приветствуется.
+- ✅ New logic — new tests.
+- ✅ Found a bug — write a reproducing test first, then fix.
+- ✅ Do not make network requests in unit tests; mock external providers.
+- ✅ `arrange / act / assert` structure is encouraged.
 
 ---
 
-## 📝 Коммиты
+## 📝 Commits
 
-Рекомендуется (но не строго обязательно)
-[Conventional Commits](https://www.conventionalcommits.org/):
+[Conventional Commits](https://www.conventionalcommits.org/) are recommended (but not strictly required):
 
 ```
-<type>(<scope>): <короткое описание в повелительном наклонении>
+<type>(<scope>): <short imperative description>
 
-[опциональное тело]
+[optional body]
 
-[опциональный footer, например "Closes #123"]
+[optional footer, e.g. "Closes #123"]
 ```
 
-Распространённые `type`:
+Common `type` values:
 
-| Тип        | Когда использовать                          |
-| ---------- | ------------------------------------------- |
-| `feat`     | Новая функциональность                      |
-| `fix`      | Исправление бага                            |
-| `docs`     | Только документация                         |
-| `refactor` | Рефакторинг без изменения поведения         |
-| `perf`     | Оптимизация производительности              |
-| `test`     | Тесты                                       |
-| `chore`    | Сборка, зависимости, конфиги                |
-| `ci`       | Изменения в CI/CD                           |
+| Type       | When to use                              |
+| ---------- | ---------------------------------------- |
+| `feat`     | New functionality                        |
+| `fix`      | Bug fix                                  |
+| `docs`     | Documentation only                       |
+| `refactor` | Refactoring without behavior change      |
+| `perf`     | Performance improvement                  |
+| `test`     | Tests                                    |
+| `chore`    | Build, dependencies, configs             |
+| `ci`       | CI/CD changes                            |
 
-Примеры:
+Examples:
 
 ```
 feat(providers): add x_api v2 fallback to public_embed
@@ -172,53 +171,52 @@ docs(readme): document TWEET_CACHE_TTL_SECONDS
 
 ## 🚀 Pull Request
 
-Перед открытием PR убедитесь, что:
+Before opening a PR, make sure:
 
-- [ ] Ветка отведена от свежего `main`.
-- [ ] `uv run ruff check .` — без ошибок.
-- [ ] `uv run ruff format --check .` — без правок.
-- [ ] `uv run pytest` — все тесты зелёные.
-- [ ] Документация (README, .env.example) обновлена при необходимости.
-- [ ] Добавлены / обновлены тесты для новой логики.
-- [ ] Заголовок PR краткий и описательный.
-- [ ] В описании указано, что и зачем меняется, и связаны issue (`Closes #N`).
+- [ ] Branch is based off a fresh `main`.
+- [ ] `uv run ruff check .` — no errors.
+- [ ] `uv run ruff format --check .` — no changes needed.
+- [ ] `uv run pytest` — all tests green.
+- [ ] Documentation (README, .env.example) updated if necessary.
+- [ ] Tests added / updated for new logic.
+- [ ] PR title is short and descriptive.
+- [ ] Description explains what and why is changed, with linked issues (`Closes #N`).
 
-После создания PR:
+After creating the PR:
 
-1. Дождитесь зелёного CI (`Lint`, `Test`).
-2. Отвечайте на ревью и коммитите правки в ту же ветку.
-3. **Не делайте `force push` без необходимости** после старта ревью —
-   это ломает анкоры обсуждений.
+1. Wait for green CI (`Lint`, `Test`).
+2. Respond to review comments and push fixes to the same branch.
+3. **Avoid `force push` after review starts** — it breaks discussion anchors.
 
 ---
 
-## 🐛 Создание issue
+## 🐛 Creating an Issue
 
 ### Bug report
 
-Включите:
+Include:
 
-- Версию / коммит, на котором воспроизводится.
-- Используемый провайдер (`TWEET_PROVIDER=...`).
-- Шаги воспроизведения.
-- Ожидаемое и фактическое поведение.
-- Релевантные логи (с `LOG_LEVEL=DEBUG` при возможности).
-- Окружение: ОС, Python, Docker / нативный запуск.
+- Version / commit where the issue reproduces.
+- Provider in use (`TWEET_PROVIDER=...`).
+- Reproduction steps.
+- Expected and actual behavior.
+- Relevant logs (with `LOG_LEVEL=DEBUG` if possible).
+- Environment: OS, Python, Docker / native run.
 
 ### Feature request
 
-Опишите:
+Describe:
 
-- Проблему, которую решает фича.
-- Предлагаемое решение и альтернативы.
-- Готовность взяться за реализацию (если есть).
+- The problem the feature solves.
+- Proposed solution and alternatives.
+- Willingness to implement it yourself (if applicable).
 
 ---
 
-## 🙏 Спасибо
+## 🙏 Thank You
 
-Каждый PR, issue, опечатка-фикс и идея делают Xtract Bot лучше.
-Если что-то непонятно — открывайте issue с тегом `question`,
-и мы поможем разобраться.
+Every PR, issue, typo fix, and idea makes Xtract Bot better.
+If something is unclear — open an issue with the `question` label
+and we will help you out.
 
 Happy hacking! 🚀
