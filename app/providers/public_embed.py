@@ -733,7 +733,7 @@ def _looks_like_twitter_media(url: str) -> bool:
 def _normalize_text(value: str) -> str:
     value = value.replace("\xa0", " ").replace("\r\n", "\n").replace("\r", "\n")
     lines = [WHITESPACE_RE.sub(" ", line).strip() for line in value.split("\n")]
-    return "\n".join(line for line in lines if line).strip()
+    return "\n".join(lines).strip()
 
 
 def _parse_datetime(value: Any) -> datetime | None:
