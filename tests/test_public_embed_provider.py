@@ -69,6 +69,7 @@ def test_public_embed_provider_reads_fxtwitter_payload_first() -> None:
         assert tweet.author_username == "fillpackart"
         assert tweet.text is not None
         assert "А твиттер тем временем" in tweet.text
+        assert "\n\n" in tweet.text
         assert tweet.lang == "ru"
         assert tweet.media[0].type == "photo"
         assert tweet.media[0].width == 937
