@@ -86,8 +86,6 @@ async def stats(
         return
     telegram_id = _parse_telegram_id(command.args) if command.args else None
     summary = await stats_service.render_summary(telegram_user_id=telegram_id)
-    if telegram_id is None:
-        summary = summary + "\n\n" + await stats_service.render_tops()
     await message.answer(summary)
 
 
