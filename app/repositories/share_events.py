@@ -1,4 +1,4 @@
-from sqlalchemy import desc, distinct, func, select
+from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import ShareEvent
@@ -52,25 +52,3 @@ class ShareEventRepository:
             "inline": int(row[4] or 0),
             "users": int(row[5] or 0),
         }
-
-    async def top_users(self, *, limit: int = 5) -> list[tuple[int, int]]:
-        shares = func.count(ShareEvent.id).label("shares")
-        result = await self.session.execute(
-            select(ShareEvent.telegram_user_id, shares)
-            .where(ShareEvent.status == "success")
-            .group_by(ShareEvent.telegram_user_id)
-            .order_by(desc(shares))
-            .limit(limit)
-        )
-        return [(int(user_id), int(count)) for user_id, count in result]
-
-    async def top_tweets(self, *, limit: int = 5) -> list[tuple[str, int]]:
-        shares = func.count(ShareEvent.id).label("shares")
-        result = await self.session.execute(
-            select(ShareEvent.tweet_id, shares)
-            .where(ShareEvent.status == "success", ShareEvent.tweet_id.is_not(None))
-            .group_by(ShareEvent.tweet_id)
-            .order_by(desc(shares))
-            .limit(limit)
-        )
-        return [(str(tweet_id), int(count)) for tweet_id, count in result]

@@ -45,19 +45,3 @@ class StatsService:
             f"🔍 Inline: {summary.inline}\n"
             f"👥 Пользователей: {summary.users}"
         )
-
-    async def render_tops(self) -> str:
-        top_users = await self._share_events.top_users(limit=5)
-        top_tweets = await self._share_events.top_tweets(limit=5)
-        user_lines = [f"• {telegram_id}: {count}" for telegram_id, count in top_users] or [
-            "📭 Нет данных"
-        ]
-        tweet_lines = [f"• {tweet_id}: {count}" for tweet_id, count in top_tweets] or [
-            "📭 Нет данных"
-        ]
-        return (
-            "🏆 Топ пользователей:\n"
-            + "\n".join(user_lines)
-            + "\n\n🔥 Топ постов:\n"
-            + "\n".join(tweet_lines)
-        )
