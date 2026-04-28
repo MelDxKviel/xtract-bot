@@ -58,6 +58,25 @@ def test_render_tweet_html_renders_quoted_tweet_as_blockquote() -> None:
     assert "Quoted &lt;text&gt;" in html
 
 
+def test_render_tweet_html_strips_leading_mentions_for_replies() -> None:
+    html = render_tweet_html(
+        make_tweet(
+            text="@someone @other Hello world",
+            replied_to_tweet=make_tweet(tweet_id="789"),
+        )
+    )
+
+    assert "Hello world" in html
+    assert "@someone" not in html
+    assert "@other" not in html
+
+
+def test_render_tweet_html_keeps_mentions_for_non_replies() -> None:
+    html = render_tweet_html(make_tweet(text="@someone Hello world"))
+
+    assert "@someone" in html
+
+
 def test_render_tweet_html_renders_replied_to_tweet_as_blockquote() -> None:
     html = render_tweet_html(
         make_tweet(
