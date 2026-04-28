@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from html import escape
 
@@ -9,6 +10,7 @@ MESSAGE_LIMIT = 4096
 CAPTION_LIMIT = 1024
 MAX_MEDIA = 10
 ORIGINAL_POST_LABEL = "🔗 Оригинальный пост"
+_LEADING_MENTIONS_RE = re.compile(r"^(@[A-Za-z0-9_]{1,50}(?:\s+|$))+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +41,10 @@ def original_post_link_html(url: str) -> str:
 
 def render_tweet_html(tweet: TweetData, *, limit: int = MESSAGE_LIMIT) -> str:
     raw_text = (tweet.text or "Пост без текста.").strip() or "Пост без текста."
+    if tweet.replied_to_tweet:
+        stripped = _LEADING_MENTIONS_RE.sub("", raw_text).strip()
+        if stripped:
+            raw_text = stripped
 
     def build(text: str) -> str:
         parts = [
@@ -79,7 +85,7 @@ def _author_html(tweet: TweetData) -> str:
 def _related_title_html(tweet: TweetData, *, quoted: bool) -> str:
     if quoted:
         return f'💬 <a href="{escape(tweet.url, quote=True)}">Цитируемый пост</a>:'
-    return f'↩️ <a href="{escape(tweet.url, quote=True)}">Родительский пост</a>:'
+    return f'↩️ <a href="{escape(tweet.url, quote=True)}">Ответ на</a>:'
 
 
 def _related_html(tweet: TweetData | None) -> str | None:

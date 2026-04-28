@@ -141,6 +141,123 @@ def test_public_embed_provider_reads_syndication_payload() -> None:
     asyncio.run(run())
 
 
+def test_public_embed_provider_fetches_replied_to_tweet_from_fxtwitter() -> None:
+    async def run() -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if "2047970725802242311" in str(request.url):
+                return httpx.Response(
+                    200,
+                    json={
+                        "code": 200,
+                        "tweet": {
+                            "id": "2047970725802242311",
+                            "text": "This is a reply",
+                            "author": {"screen_name": "replier", "name": "Replier"},
+                            "replying_to": "original_user",
+                            "replying_to_status": "1000000000000000001",
+                        },
+                    },
+                    request=request,
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "code": 200,
+                    "tweet": {
+                        "id": "1000000000000000001",
+                        "text": "Original tweet text",
+                        "author": {"screen_name": "original_user", "name": "Original User"},
+                    },
+                },
+                request=request,
+            )
+
+        provider = PublicEmbedTweetProvider(client=_client(handler))
+        tweet = await provider.get_tweet(
+            "2047970725802242311",
+            "https://x.com/replier/status/2047970725802242311",
+        )
+
+        assert tweet.replied_to_tweet is not None
+        assert tweet.replied_to_tweet.author_username == "original_user"
+        assert tweet.replied_to_tweet.text == "Original tweet text"
+
+    asyncio.run(run())
+
+
+def test_public_embed_provider_fetches_replied_to_tweet_from_syndication() -> None:
+    async def run() -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.host != "cdn.syndication.twimg.com":
+                return httpx.Response(503, request=request)
+            tweet_id = request.url.params.get("id", "")
+            if tweet_id == "222":
+                return httpx.Response(
+                    200,
+                    json={
+                        "id_str": "222",
+                        "text": "Reply tweet",
+                        "user": {"name": "Replier", "screen_name": "replier"},
+                        "in_reply_to_status_id_str": "111",
+                    },
+                    request=request,
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "id_str": "111",
+                    "text": "Parent tweet",
+                    "user": {"name": "Parent User", "screen_name": "parent_user"},
+                },
+                request=request,
+            )
+
+        provider = PublicEmbedTweetProvider(client=_client(handler))
+        tweet = await provider.get_tweet("222", "https://x.com/replier/status/222")
+
+        assert tweet.replied_to_tweet is not None
+        assert tweet.replied_to_tweet.author_username == "parent_user"
+        assert tweet.replied_to_tweet.text == "Parent tweet"
+
+    asyncio.run(run())
+
+
+def test_public_embed_provider_silently_skips_unavailable_replied_to_tweet() -> None:
+    async def run() -> None:
+        call_count = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return httpx.Response(
+                    200,
+                    json={
+                        "code": 200,
+                        "tweet": {
+                            "id": "2047970725802242311",
+                            "text": "This is a reply",
+                            "author": {"screen_name": "replier", "name": "Replier"},
+                            "replying_to": "gone_user",
+                            "replying_to_status": "999",
+                        },
+                    },
+                    request=request,
+                )
+            return httpx.Response(404, request=request)
+
+        provider = PublicEmbedTweetProvider(client=_client(handler))
+        tweet = await provider.get_tweet(
+            "2047970725802242311",
+            "https://x.com/replier/status/2047970725802242311",
+        )
+
+        assert tweet.text == "This is a reply"
+        assert tweet.replied_to_tweet is None
+
+    asyncio.run(run())
+
+
 def test_public_embed_provider_falls_back_to_oembed() -> None:
     async def run() -> None:
         def handler(request: httpx.Request) -> httpx.Response:

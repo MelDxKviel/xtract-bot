@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from datetime import UTC, datetime
 from html import unescape
@@ -16,6 +17,7 @@ OEMBED_URL = "https://publish.twitter.com/oembed"
 FXTWITTER_URL = "https://api.fxtwitter.com/status/{tweet_id}"
 VXTWITTER_URL = "https://api.vxtwitter.com/Twitter/status/{tweet_id}"
 USER_AGENT = "xtract-bot/0.1 (+https://github.com/)"
+logger = logging.getLogger(__name__)
 TWITTER_DATE_FORMAT = "%a %b %d %H:%M:%S %z %Y"
 WHITESPACE_RE = re.compile(r"[ \t\r\f\v]+")
 
@@ -49,8 +51,20 @@ class PublicEmbedTweetProvider(TweetProvider):
             try:
                 tweet = await getter(tweet_id, source_url)
                 _ensure_usable_tweet(tweet)
+                logger.info(
+                    "public_embed tweet_id=%s provider=%s replied_to_tweet=%s",
+                    tweet_id,
+                    getter.__name__,
+                    tweet.replied_to_tweet.tweet_id if tweet.replied_to_tweet else None,
+                )
                 return tweet
             except TweetProviderError as exc:
+                logger.info(
+                    "public_embed tweet_id=%s provider=%s failed: %s",
+                    tweet_id,
+                    getter.__name__,
+                    exc.code,
+                )
                 errors.append(exc)
 
         raise _select_provider_error(errors)
@@ -74,12 +88,10 @@ class PublicEmbedTweetProvider(TweetProvider):
             await self._client.aclose()
 
     async def _get_from_fxtwitter(self, tweet_id: str, source_url: str) -> TweetData:
-        payload = await self._get_json(FXTWITTER_URL.format(tweet_id=tweet_id))
-        return _tweet_from_public_api(payload, source_url, requested_tweet_id=tweet_id)
+        return await self._fetch_public_api_tweet(FXTWITTER_URL, tweet_id, source_url)
 
     async def _get_from_vxtwitter(self, tweet_id: str, source_url: str) -> TweetData:
-        payload = await self._get_json(VXTWITTER_URL.format(tweet_id=tweet_id))
-        return _tweet_from_public_api(payload, source_url, requested_tweet_id=tweet_id)
+        return await self._fetch_public_api_tweet(VXTWITTER_URL, tweet_id, source_url)
 
     async def _get_from_syndication(self, tweet_id: str, source_url: str) -> TweetData:
         payload = await self._get_json(
@@ -88,7 +100,76 @@ class PublicEmbedTweetProvider(TweetProvider):
         )
         if _is_tombstone(payload):
             raise TweetProviderError("tweet is unavailable", code="private_or_deleted")
-        return _tweet_from_syndication(payload, source_url, requested_tweet_id=tweet_id)
+        tweet = _tweet_from_syndication(payload, source_url, requested_tweet_id=tweet_id)
+        replied_to_id = _first_str(payload, "in_reply_to_status_id_str", "in_reply_to_status_id")
+        logger.info(
+            "syndication tweet_id=%s replied_to_id=%s payload_keys=%s",
+            tweet_id,
+            replied_to_id,
+            sorted(payload.keys()),
+        )
+        if replied_to_id and replied_to_id != tweet_id:
+            try:
+                parent_payload = await self._get_json(
+                    SYNDICATION_URL,
+                    params={"id": replied_to_id, "lang": "en"},
+                )
+                if not _is_tombstone(parent_payload):
+                    tweet.replied_to_tweet = _tweet_from_syndication(
+                        parent_payload,
+                        f"https://x.com/i/status/{replied_to_id}",
+                        requested_tweet_id=replied_to_id,
+                    )
+                    logger.info(
+                        "syndication tweet_id=%s replied_to fetched ok author=%s",
+                        tweet_id,
+                        tweet.replied_to_tweet.author_username,
+                    )
+                else:
+                    logger.info("syndication tweet_id=%s replied_to is tombstone", tweet_id)
+            except TweetProviderError as exc:
+                logger.info(
+                    "syndication tweet_id=%s replied_to fetch failed: %s (%s)",
+                    tweet_id,
+                    exc,
+                    exc.code,
+                )
+        return tweet
+
+    async def _fetch_public_api_tweet(
+        self, url_template: str, tweet_id: str, source_url: str
+    ) -> TweetData:
+        payload = await self._get_json(url_template.format(tweet_id=tweet_id))
+        tweet = _tweet_from_public_api(payload, source_url, requested_tweet_id=tweet_id)
+        data = payload.get("tweet") if isinstance(payload.get("tweet"), dict) else payload
+        replied_to_id = _replied_to_id_from_public_api(data)
+        logger.info(
+            "public_api tweet_id=%s replied_to_id=%s replying_to_raw=%r",
+            tweet_id,
+            replied_to_id,
+            data.get("replying_to") or data.get("replyingToID"),
+        )
+        if replied_to_id and replied_to_id != tweet_id:
+            try:
+                parent_payload = await self._get_json(url_template.format(tweet_id=replied_to_id))
+                tweet.replied_to_tweet = _tweet_from_public_api(
+                    parent_payload,
+                    f"https://x.com/i/status/{replied_to_id}",
+                    requested_tweet_id=replied_to_id,
+                )
+                logger.info(
+                    "public_api tweet_id=%s replied_to fetched ok author=%s",
+                    tweet_id,
+                    tweet.replied_to_tweet.author_username,
+                )
+            except TweetProviderError as exc:
+                logger.info(
+                    "public_api tweet_id=%s replied_to fetch failed: %s (%s)",
+                    tweet_id,
+                    exc,
+                    exc.code,
+                )
+        return tweet
 
     async def _get_from_oembed(self, tweet_id: str, source_url: str) -> TweetData:
         payload = await self._get_json(
@@ -673,6 +754,19 @@ def _first_str(payload: dict[str, Any], *keys: str) -> str | None:
             return value
         if isinstance(value, int):
             return str(value)
+    return None
+
+
+def _replied_to_id_from_public_api(data: dict[str, Any]) -> str | None:
+    # FxTwitter: replying_to_status (tweet ID), replying_to (username string, not useful here)
+    # VxTwitter: replyingToID
+    value = _first_str(data, "replying_to_status", "replyingToID")
+    if value:
+        return value
+    # FxTwitter older format: replying_to as nested dict with "status" key
+    replying_to = data.get("replying_to")
+    if isinstance(replying_to, dict):
+        return _first_str(replying_to, "status")
     return None
 
 
