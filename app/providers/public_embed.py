@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from datetime import UTC, datetime
 from html import unescape
@@ -16,6 +17,7 @@ OEMBED_URL = "https://publish.twitter.com/oembed"
 FXTWITTER_URL = "https://api.fxtwitter.com/status/{tweet_id}"
 VXTWITTER_URL = "https://api.vxtwitter.com/Twitter/status/{tweet_id}"
 USER_AGENT = "xtract-bot/0.1 (+https://github.com/)"
+logger = logging.getLogger(__name__)
 TWITTER_DATE_FORMAT = "%a %b %d %H:%M:%S %z %Y"
 WHITESPACE_RE = re.compile(r"[ \t\r\f\v]+")
 
@@ -111,6 +113,12 @@ class PublicEmbedTweetProvider(TweetProvider):
         tweet = _tweet_from_public_api(payload, source_url, requested_tweet_id=tweet_id)
         data = payload.get("tweet") if isinstance(payload.get("tweet"), dict) else payload
         replied_to_id = _replied_to_id_from_public_api(data)
+        logger.info(
+            "public_api tweet_id=%s replied_to_id=%s replying_to_raw=%r",
+            tweet_id,
+            replied_to_id,
+            data.get("replying_to") or data.get("replyingToID"),
+        )
         if replied_to_id and replied_to_id != tweet_id:
             try:
                 parent_payload = await self._get_json(url_template.format(tweet_id=replied_to_id))
@@ -119,8 +127,18 @@ class PublicEmbedTweetProvider(TweetProvider):
                     f"https://x.com/i/status/{replied_to_id}",
                     requested_tweet_id=replied_to_id,
                 )
-            except TweetProviderError:
-                pass
+                logger.info(
+                    "public_api tweet_id=%s replied_to fetched ok author=%s",
+                    tweet_id,
+                    tweet.replied_to_tweet.author_username,
+                )
+            except TweetProviderError as exc:
+                logger.info(
+                    "public_api tweet_id=%s replied_to fetch failed: %s (%s)",
+                    tweet_id,
+                    exc,
+                    exc.code,
+                )
         return tweet
 
     async def _get_from_oembed(self, tweet_id: str, source_url: str) -> TweetData:
