@@ -77,6 +77,28 @@ def test_render_tweet_html_keeps_mentions_for_non_replies() -> None:
     assert "@someone" in html
 
 
+def test_render_tweet_html_does_not_strip_cyrillic_at_sign_text() -> None:
+    html = render_tweet_html(
+        make_tweet(
+            text="@привет это не хэндл",
+            replied_to_tweet=make_tweet(tweet_id="789"),
+        )
+    )
+
+    assert "@привет" in html
+
+
+def test_render_tweet_html_does_not_strip_mention_without_delimiter() -> None:
+    html = render_tweet_html(
+        make_tweet(
+            text="@user-continuation text",
+            replied_to_tweet=make_tweet(tweet_id="789"),
+        )
+    )
+
+    assert "@user" in html
+
+
 def test_render_tweet_html_renders_replied_to_tweet_as_blockquote() -> None:
     html = render_tweet_html(
         make_tweet(

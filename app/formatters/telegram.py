@@ -10,7 +10,7 @@ MESSAGE_LIMIT = 4096
 CAPTION_LIMIT = 1024
 MAX_MEDIA = 10
 ORIGINAL_POST_LABEL = "🔗 Оригинальный пост"
-_LEADING_MENTIONS_RE = re.compile(r"^(@\w+\s*)+", re.UNICODE)
+_LEADING_MENTIONS_RE = re.compile(r"^(@[A-Za-z0-9_]{1,50}(?:\s+|$))+")
 
 
 @dataclass(frozen=True, slots=True)
