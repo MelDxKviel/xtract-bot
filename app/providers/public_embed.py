@@ -51,8 +51,20 @@ class PublicEmbedTweetProvider(TweetProvider):
             try:
                 tweet = await getter(tweet_id, source_url)
                 _ensure_usable_tweet(tweet)
+                logger.info(
+                    "public_embed tweet_id=%s provider=%s replied_to_tweet=%s",
+                    tweet_id,
+                    getter.__name__,
+                    tweet.replied_to_tweet.tweet_id if tweet.replied_to_tweet else None,
+                )
                 return tweet
             except TweetProviderError as exc:
+                logger.info(
+                    "public_embed tweet_id=%s provider=%s failed: %s",
+                    tweet_id,
+                    getter.__name__,
+                    exc.code,
+                )
                 errors.append(exc)
 
         raise _select_provider_error(errors)
@@ -90,6 +102,12 @@ class PublicEmbedTweetProvider(TweetProvider):
             raise TweetProviderError("tweet is unavailable", code="private_or_deleted")
         tweet = _tweet_from_syndication(payload, source_url, requested_tweet_id=tweet_id)
         replied_to_id = _first_str(payload, "in_reply_to_status_id_str", "in_reply_to_status_id")
+        logger.info(
+            "syndication tweet_id=%s replied_to_id=%s payload_keys=%s",
+            tweet_id,
+            replied_to_id,
+            sorted(payload.keys()),
+        )
         if replied_to_id and replied_to_id != tweet_id:
             try:
                 parent_payload = await self._get_json(
@@ -102,8 +120,20 @@ class PublicEmbedTweetProvider(TweetProvider):
                         f"https://x.com/i/status/{replied_to_id}",
                         requested_tweet_id=replied_to_id,
                     )
-            except TweetProviderError:
-                pass
+                    logger.info(
+                        "syndication tweet_id=%s replied_to fetched ok author=%s",
+                        tweet_id,
+                        tweet.replied_to_tweet.author_username,
+                    )
+                else:
+                    logger.info("syndication tweet_id=%s replied_to is tombstone", tweet_id)
+            except TweetProviderError as exc:
+                logger.info(
+                    "syndication tweet_id=%s replied_to fetch failed: %s (%s)",
+                    tweet_id,
+                    exc,
+                    exc.code,
+                )
         return tweet
 
     async def _fetch_public_api_tweet(
