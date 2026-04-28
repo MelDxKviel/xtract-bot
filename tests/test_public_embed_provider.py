@@ -153,9 +153,9 @@ def test_public_embed_provider_fetches_replied_to_tweet_from_fxtwitter() -> None
                             "id": "2047970725802242311",
                             "text": "This is a reply",
                             "author": {"screen_name": "replier", "name": "Replier"},
-                            "reply": {
-                                "in_reply_to_screen_name": "original_user",
-                                "in_reply_to_status_id": "1000000000000000001",
+                            "replying_to": {
+                                "screen_name": "original_user",
+                                "status": "1000000000000000001",
                             },
                         },
                     },
@@ -240,9 +240,9 @@ def test_public_embed_provider_silently_skips_unavailable_replied_to_tweet() -> 
                             "id": "2047970725802242311",
                             "text": "This is a reply",
                             "author": {"screen_name": "replier", "name": "Replier"},
-                            "reply": {
-                                "in_reply_to_screen_name": "gone_user",
-                                "in_reply_to_status_id": "999",
+                            "replying_to": {
+                                "screen_name": "gone_user",
+                                "status": "999",
                             },
                         },
                     },

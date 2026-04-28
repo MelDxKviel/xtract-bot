@@ -710,14 +710,14 @@ def _first_str(payload: dict[str, Any], *keys: str) -> str | None:
 
 
 def _replied_to_id_from_public_api(data: dict[str, Any]) -> str | None:
-    reply = data.get("reply")
-    if isinstance(reply, dict):
-        value = _first_str(reply, "in_reply_to_status_id", "replyStatusId", "inReplyToStatusId")
+    # FxTwitter: { "replying_to": { "status": "<id>", "screen_name": "..." } }
+    replying_to = data.get("replying_to")
+    if isinstance(replying_to, dict):
+        value = _first_str(replying_to, "status")
         if value:
             return value
-    return _first_str(
-        data, "in_reply_to_status_id", "in_reply_to_status_id_str", "inReplyToStatusId"
-    )
+    # VxTwitter: { "replyingToID": "<id>" }
+    return _first_str(data, "replyingToID")
 
 
 def _first_dict(payload: dict[str, Any], *keys: str) -> dict[str, Any] | None:
