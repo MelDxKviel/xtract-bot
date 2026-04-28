@@ -758,14 +758,16 @@ def _first_str(payload: dict[str, Any], *keys: str) -> str | None:
 
 
 def _replied_to_id_from_public_api(data: dict[str, Any]) -> str | None:
-    # FxTwitter: { "replying_to": { "status": "<id>", "screen_name": "..." } }
+    # FxTwitter: replying_to_status (tweet ID), replying_to (username string, not useful here)
+    # VxTwitter: replyingToID
+    value = _first_str(data, "replying_to_status", "replyingToID")
+    if value:
+        return value
+    # FxTwitter older format: replying_to as nested dict with "status" key
     replying_to = data.get("replying_to")
     if isinstance(replying_to, dict):
-        value = _first_str(replying_to, "status")
-        if value:
-            return value
-    # VxTwitter: { "replyingToID": "<id>" }
-    return _first_str(data, "replyingToID")
+        return _first_str(replying_to, "status")
+    return None
 
 
 def _first_dict(payload: dict[str, Any], *keys: str) -> dict[str, Any] | None:
