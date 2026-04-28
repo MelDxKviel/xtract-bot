@@ -715,7 +715,9 @@ def _replied_to_id_from_public_api(data: dict[str, Any]) -> str | None:
         value = _first_str(reply, "in_reply_to_status_id", "replyStatusId", "inReplyToStatusId")
         if value:
             return value
-    return _first_str(data, "in_reply_to_status_id", "in_reply_to_status_id_str", "inReplyToStatusId")
+    return _first_str(
+        data, "in_reply_to_status_id", "in_reply_to_status_id_str", "inReplyToStatusId"
+    )
 
 
 def _first_dict(payload: dict[str, Any], *keys: str) -> dict[str, Any] | None:
