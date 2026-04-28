@@ -79,7 +79,7 @@ def _author_html(tweet: TweetData) -> str:
 def _related_title_html(tweet: TweetData, *, quoted: bool) -> str:
     if quoted:
         return f'💬 <a href="{escape(tweet.url, quote=True)}">Цитируемый пост</a>:'
-    return f'↩️ <a href="{escape(tweet.url, quote=True)}">Родительский пост</a>:'
+    return f'↩️ <a href="{escape(tweet.url, quote=True)}">Ответ на</a>:'
 
 
 def _related_html(tweet: TweetData | None) -> str | None:
