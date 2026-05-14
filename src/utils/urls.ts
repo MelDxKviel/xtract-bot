@@ -39,7 +39,7 @@ export function parseTweetUrl(rawUrl: string): ParsedTweetUrl | null {
 
   const segments = parsed.pathname
     .split("/")
-    .map((part) => decodeURIComponent(part))
+    .map(safeDecode)
     .filter((part) => part.length > 0);
 
   for (let index = 0; index < segments.length; index += 1) {
@@ -57,6 +57,14 @@ export function parseTweetUrl(rawUrl: string): ParsedTweetUrl | null {
     };
   }
   return null;
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 function normalizeHost(host: string): string {

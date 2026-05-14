@@ -31,4 +31,16 @@ describe("parseTweetUrl", () => {
     expect(parseTweetUrl("https://example.com/user/status/123")).toBeNull();
     expect(parseTweetUrl("https://x.com/user/not-status/123")).toBeNull();
   });
+
+  it("does not throw on malformed percent-escapes", () => {
+    expect(parseTweetUrl("https://x.com/user/status/%E0%A4%A")).toBeNull();
+    expect(() =>
+      extractFirstTweetUrl("look at https://x.com/user/status/%E0%A4%A please"),
+    ).not.toThrow();
+    const parsed = extractFirstTweetUrl(
+      "broken https://x.com/%E0%A4%A then https://x.com/user/status/42",
+    );
+    expect(parsed).not.toBeNull();
+    expect(parsed!.tweetId).toBe("42");
+  });
 });
