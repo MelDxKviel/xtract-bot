@@ -4,97 +4,99 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Xtract Bot** is an async Python Telegram bot that lets users share X/Twitter posts inside Telegram. It extracts tweet content (text, media, metadata) via pluggable providers and formats it for Telegram.
+**Xtract Bot** is a TypeScript Telegram bot that lets users share X/Twitter posts inside Telegram. It extracts tweet content (text, media, metadata) via pluggable providers and formats it for Telegram.
 
-Stack: Python 3.12+, aiogram 3, SQLAlchemy 2 (async), PostgreSQL 17, Alembic, Pydantic Settings, uv.
+Stack: TypeScript 5, grammY 1.42, Drizzle ORM (postgres-js), PostgreSQL 17, Vitest, Bun.
 
 ## Commands
 
 ```bash
-# Install dependencies (including dev)
-uv sync --extra dev
+# Install dependencies
+bun install
 
 # Lint
-uv run ruff check .
+bun run lint
 
 # Format
-uv run ruff format .
+bun run format
+bun run format:check
 
-# Run tests
-uv run pytest
+# Typecheck
+bun run typecheck
 
-# Run a single test file
-uv run pytest tests/test_urls.py
-
-# Run tests matching a name pattern
-uv run pytest -k "test_name"
+# Tests
+bun run test
+bun run test tests/urls.test.ts
+bun run test -- -t "embed"
 
 # Database migrations
-uv run alembic upgrade head
+bun run src/db/migrate.ts
 
 # Run bot locally (requires .env)
-uv run python -m app.main
+bun run start
 
 # Docker (local: builds from source)
 docker compose -f docker-compose.local.yml up --build
 ```
 
-CI runs `ruff check .`, `ruff format --check .`, and `pytest` on every PR.
+CI runs `typecheck`, `lint`, `format:check`, and `test` on every PR.
 
 ## Architecture
 
 ### Request Flow
 
-**Private chat**: Message → `DatabaseSessionMiddleware` (injects repos/services) → `AccessMiddleware` (registers user, enforces whitelist) → `private.py` handler → `TweetShareService` → provider → `TweetCacheRepository` → formatter → Telegram message.
+**Private chat**: Update → `sessionMiddleware` (opens Drizzle transaction, builds repos/services, attaches them to the grammY `Context`) → `accessMiddleware` (registers user, enforces whitelist) → composer-bound handler → `tweetShareService` → provider → `tweetCache` repository → formatter → Telegram message.
 
 **Inline query**: `@bot <url>` → `inline_query` handler immediately responds with a "⏳ Loading…" placeholder (no fetch yet) → user selects result → `chosen_inline_result` handler runs the full share flow and edits the message in-place.
 
 ### Key Layers
 
-| Layer | Path | Role |
-|---|---|---|
-| Entry point | `app/main.py` | Init DB, bot, provider; start polling |
-| Dispatcher | `app/bot/dispatcher.py` | Register middlewares and 3 routers |
-| Handlers | `app/bot/handlers/` | `private.py`, `admin.py`, `inline.py` |
-| Middlewares | `app/bot/middlewares/access.py` | `DatabaseSessionMiddleware`, `AccessMiddleware` |
-| Services | `app/services/` | `TweetShareService`, `AccessService`, `StatsService` |
-| Repositories | `app/repositories/` | Data access for each DB model |
-| Providers | `app/providers/` | Pluggable tweet fetching strategies |
-| Formatters | `app/formatters/telegram.py` | Convert `TweetData` → HTML `TelegramPost` |
-| Utils | `app/utils/urls.py` | Parse X/Twitter/VxTwitter URLs |
+| Layer        | Path                         | Role                                      |
+| ------------ | ---------------------------- | ----------------------------------------- |
+| Entry point  | `src/main.ts`                | Init DB, bot, provider; start polling     |
+| Dispatcher   | `src/bot/dispatcher.ts`      | Register middlewares and composers        |
+| Handlers     | `src/bot/handlers/`          | `private.ts`, `admin.ts`, `inline.ts`     |
+| Middlewares  | `src/bot/middlewares/`       | `session.ts`, `access.ts`                 |
+| Services     | `src/services/`              | `access`, `stats`, `tweetShare`           |
+| Repositories | `src/repositories/`          | Data access for each Drizzle table        |
+| Providers    | `src/providers/`             | Pluggable tweet fetching strategies       |
+| Formatters   | `src/formatters/telegram.ts` | Convert `TweetData` → HTML `TelegramPost` |
+| Utils        | `src/utils/urls.ts`          | Parse X/Twitter/VxTwitter URLs            |
 
 ### Middleware & Dependency Injection
 
-Both middlewares are applied to `message`, `inline_query`, and `chosen_inline_result` observers. `DatabaseSessionMiddleware` runs first (outermost): it opens an async SQLAlchemy session, constructs all repositories and services, injects them into the handler `data` dict, then commits on success or rolls back on exception. `AccessMiddleware` runs second: it reads `access_service` from `data`, upserts the user, then blocks access unless the user is an admin, is whitelisted, or is using a public command (`/start`, `/help`, `/id`).
+Both middlewares run on every update. `sessionMiddleware` runs first: it opens a Drizzle transaction (`db.transaction(...)`), constructs all repositories and services, attaches them to the grammY `Context`, and the transaction commits on success or rolls back if the handler throws. `accessMiddleware` runs second: it reads `ctx.services.access`, upserts the user, then blocks access unless the user is an admin, is whitelisted, or is using a public command (`/start`, `/help`, `/id`).
 
-Handlers declare injected objects as keyword arguments (e.g. `tweet_share_service: TweetShareService`).
+Handlers consume injected services via the typed `AppContext` (e.g. `ctx.services.tweetShare`).
 
 ### Providers
 
-Selected via `TWEET_PROVIDER` env var. All implement `TweetProvider` (`get_tweet`, `health`, `close`).
+Selected via `TWEET_PROVIDER` env var. All implement `TweetProvider` (`getTweet`, `health`, `close`).
 
 - `fake` — deterministic mock, for dev/testing
 - `public_embed` — tries FxTwitter → VxTwitter → Syndication API → oEmbed in sequence; uses the first that returns usable content (default for public use)
 - `external_http` — delegates to an external HTTP API (requires `TWEET_PROVIDER_BASE_URL`)
 - `x_api` — official X API v2 (requires `X_BEARER_TOKEN`)
 
-`TweetData` and `TweetMedia` are the shared domain types defined in `app/providers/base.py`. They have `to_payload()` / `from_payload()` for JSONB serialisation used by the cache.
+`TweetData` and `TweetMedia` are the shared domain types defined in `src/providers/base.ts`. Helper functions `tweetToPayload` / `tweetFromPayload` handle the JSONB serialisation used by the cache.
 
-### Database Models (`app/db/models.py`)
+### Database Schema (`src/db/schema.ts`)
 
 - `users` — Telegram user + `is_allowed` whitelist flag
 - `tweet_cache` — JSONB payload with TTL (`expires_at`); keyed by `tweet_id`
 - `share_events` — per-share audit log (mode: private/inline, status, error_code)
 - `admin_actions` — admin allow/deny audit log
 
-### Configuration (`app/config.py`)
+Migrations live in `drizzle/migrations/*.sql` and are applied by `src/db/migrate.ts`.
 
-Pydantic Settings loaded from `.env`. `get_settings()` is `@lru_cache`-wrapped — tests that need custom settings must patch it or construct `Settings` directly. See `.env.example` for all vars.
+### Configuration (`src/config.ts`)
+
+Plain `loadSettings(env)` function — no global cache, accepts an env dictionary so tests can pass overrides directly. See `.env.example` for all vars.
 
 ### Media Sending Strategy (private chat)
 
-`private.py` tries to send media in this fallback order: `answer_media_group` with direct URLs → `answer_media_group` with preview thumbnails → individual items one by one → plain text fallback. Each step catches `TelegramBadRequest` and falls through. The bot uses HTML parse mode globally (set in `DefaultBotProperties`).
+`src/bot/handlers/private.ts` tries to send media in this fallback order: `replyWithMediaGroup` with direct URLs → `replyWithMediaGroup` with preview thumbnails → individual items one by one → plain text fallback. Each step catches `GrammyError` and falls through. The bot installs an API transformer that sets `parse_mode: "HTML"` on `sendMessage`, `editMessageText`, and `editMessageCaption` unless the caller overrides it.
 
 ### Tests
 
-Tests are plain Python files under `tests/`. `asyncio_mode = "auto"` is configured, but most tests wrap coroutines in `asyncio.run()` manually. Use simple in-module fakes (e.g. `FakeProvider`, `FakeCache`) rather than mocking frameworks.
+Tests are plain TS files under `tests/*.test.ts`, using Vitest. Path alias `@/*` resolves to `src/*`. Use simple in-module fakes (e.g. `FakeProvider`, `FakeCache`) rather than mocking frameworks. The `public_embed` test injects a custom `fetch` to replay canned HTTP responses.

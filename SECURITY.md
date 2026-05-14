@@ -8,10 +8,10 @@ how to report a vulnerability and which versions are supported.
 Only the latest version from the `main` branch is supported under the MVP scope.
 Security fixes are released in the next minor or patch releases.
 
-| Version   | Support                  |
-| --------- | ------------------------ |
-| `main`    | ✅ actively supported    |
-| `< 0.1.0` | ❌ not supported         |
+| Version   | Support               |
+| --------- | --------------------- |
+| `main`    | ✅ actively supported |
+| `< 0.1.0` | ❌ not supported      |
 
 ## Reporting a Vulnerability
 
@@ -36,12 +36,12 @@ Include in your report:
 
 ## What Happens After a Report
 
-| Timeline     | Action                                                                     |
-| ------------ | -------------------------------------------------------------------------- |
-| **48 hours** | Acknowledgement of receipt                                                 |
-| **7 days**   | Initial assessment: confirmation, severity, action plan                    |
-| **30 days**  | Target fix release for High/Critical severity issues                       |
-| **On fix**   | Public advisory, reporter credit (if agreed), and changelog entry         |
+| Timeline     | Action                                                            |
+| ------------ | ----------------------------------------------------------------- |
+| **48 hours** | Acknowledgement of receipt                                        |
+| **7 days**   | Initial assessment: confirmation, severity, action plan           |
+| **30 days**  | Target fix release for High/Critical severity issues              |
+| **On fix**   | Public advisory, reporter credit (if agreed), and changelog entry |
 
 If the vulnerability affects dependencies (aiogram, SQLAlchemy, Alembic, asyncpg, httpx, etc.),
 we will coordinate disclosure with upstream projects.

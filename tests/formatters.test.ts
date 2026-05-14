@@ -1,0 +1,129 @@
+import { describe, expect, it } from "vitest";
+
+import { CAPTION_LIMIT, MESSAGE_LIMIT, formatTweet, renderTweetHtml } from "@/formatters/telegram";
+import { makeTweet, type TweetData } from "@/providers/base";
+
+function makeTweetData(overrides: Partial<TweetData> = {}): TweetData {
+  return makeTweet({
+    tweetId: "123",
+    url: "https://x.com/user/status/123",
+    authorName: "Display <Name>",
+    authorUsername: "user",
+    authorUrl: "https://x.com/user",
+    text: "Hello <b>& world",
+    ...overrides,
+  });
+}
+
+describe("renderTweetHtml", () => {
+  it("escapes user-supplied text", () => {
+    const html = renderTweetHtml(makeTweetData());
+    expect(html).toContain("Display &lt;Name&gt;");
+    expect(html).toContain("Hello &lt;b&gt;&amp; world");
+    expect(html).not.toContain("<b>");
+  });
+
+  it("truncates to the message limit", () => {
+    const html = renderTweetHtml(makeTweetData({ text: "x".repeat(10_000) }));
+    expect(html.length).toBeLessThanOrEqual(MESSAGE_LIMIT);
+    expect(html).not.toContain("https://x.com/user/status/123");
+  });
+
+  it("does not embed the original link", () => {
+    const html = renderTweetHtml(makeTweetData());
+    expect(html).not.toContain("https://x.com/user/status/123");
+    expect(html).not.toContain("Открыть оригинал");
+  });
+
+  it("renders quoted tweet as blockquote", () => {
+    const html = renderTweetHtml(
+      makeTweetData({
+        quotedTweet: makeTweetData({
+          tweetId: "456",
+          url: "https://x.com/quoted/status/456",
+          authorName: "Quoted Author",
+          authorUsername: "quoted",
+          authorUrl: "https://x.com/quoted",
+          text: "Quoted <text>",
+        }),
+      }),
+    );
+    expect(html).toContain('<a href="https://x.com/quoted/status/456">Цитируемый пост</a>:');
+    expect(html).toContain("<blockquote>");
+    expect(html).toContain("Quoted Author (@quoted):");
+    expect(html).toContain("Quoted &lt;text&gt;");
+  });
+
+  it("strips leading mentions for replies", () => {
+    const html = renderTweetHtml(
+      makeTweetData({
+        text: "@someone @other Hello world",
+        repliedToTweet: makeTweetData({ tweetId: "789" }),
+      }),
+    );
+    expect(html).toContain("Hello world");
+    expect(html).not.toContain("@someone");
+    expect(html).not.toContain("@other");
+  });
+
+  it("keeps mentions for non-reply tweets", () => {
+    const html = renderTweetHtml(makeTweetData({ text: "@someone Hello world" }));
+    expect(html).toContain("@someone");
+  });
+
+  it("does not strip Cyrillic at-sign text", () => {
+    const html = renderTweetHtml(
+      makeTweetData({
+        text: "@привет это не хэндл",
+        repliedToTweet: makeTweetData({ tweetId: "789" }),
+      }),
+    );
+    expect(html).toContain("@привет");
+  });
+
+  it("does not strip mention without a delimiter", () => {
+    const html = renderTweetHtml(
+      makeTweetData({
+        text: "@user-continuation text",
+        repliedToTweet: makeTweetData({ tweetId: "789" }),
+      }),
+    );
+    expect(html).toContain("@user");
+  });
+
+  it("renders replied-to tweet as blockquote", () => {
+    const html = renderTweetHtml(
+      makeTweetData({
+        repliedToTweet: makeTweetData({
+          tweetId: "789",
+          url: "https://x.com/other/status/789",
+          authorName: "Other Author",
+          authorUsername: "other",
+          authorUrl: "https://x.com/other",
+          text: "Original <text>",
+        }),
+      }),
+    );
+    expect(html).toContain('<a href="https://x.com/other/status/789">Ответ на</a>:');
+    expect(html).toContain("<blockquote>");
+    expect(html).toContain("Other Author (@other):");
+    expect(html).toContain("Original &lt;text&gt;");
+  });
+});
+
+describe("formatTweet", () => {
+  it("limits caption and media", () => {
+    const media = Array.from({ length: 12 }, (_, index) => ({
+      type: "photo" as const,
+      url: `https://example.com/${index}.jpg`,
+      previewUrl: null,
+      width: null,
+      height: null,
+      durationMs: null,
+    }));
+    const post = formatTweet(makeTweetData({ text: "x".repeat(5000), media }));
+    expect(post.captionHtml.length).toBeLessThanOrEqual(CAPTION_LIMIT);
+    expect(post.media.length).toBe(10);
+    expect(post.extraMediaCount).toBe(2);
+  });
+});

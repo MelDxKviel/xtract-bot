@@ -1,0 +1,93 @@
+import { sql } from "drizzle-orm";
+import {
+  bigint,
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
+
+import type { TweetDataPayload } from "@/providers/base";
+
+export const users = pgTable(
+  "users",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    telegramId: bigint("telegram_id", { mode: "number" }).notNull(),
+    username: text("username"),
+    firstName: text("first_name"),
+    lastName: text("last_name"),
+    isAllowed: boolean("is_allowed").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    telegramIdUnique: uniqueIndex("users_telegram_id_key").on(table.telegramId),
+    telegramIdIdx: index("ix_users_telegram_id").on(table.telegramId),
+  }),
+);
+
+export const tweetCache = pgTable("tweet_cache", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  tweetId: text("tweet_id").notNull().unique(),
+  sourceUrl: text("source_url").notNull(),
+  payload: jsonb("payload").$type<TweetDataPayload>().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
+export const shareEvents = pgTable(
+  "share_events",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    telegramUserId: bigint("telegram_user_id", { mode: "number" }).notNull(),
+    chatId: bigint("chat_id", { mode: "number" }),
+    tweetId: text("tweet_id"),
+    sourceUrl: text("source_url").notNull(),
+    mode: text("mode").notNull(),
+    status: text("status").notNull(),
+    errorCode: text("error_code"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    telegramUserIdIdx: index("ix_share_events_telegram_user_id").on(table.telegramUserId),
+    tweetIdIdx: index("ix_share_events_tweet_id").on(table.tweetId),
+    createdAtIdx: index("ix_share_events_created_at").on(table.createdAt),
+  }),
+);
+
+export const adminActions = pgTable(
+  "admin_actions",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    adminTelegramId: bigint("admin_telegram_id", { mode: "number" }).notNull(),
+    action: text("action").notNull(),
+    targetTelegramId: bigint("target_telegram_id", { mode: "number" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => ({
+    adminTelegramIdIdx: index("ix_admin_actions_admin_telegram_id").on(table.adminTelegramId),
+  }),
+);
+
+export type UserRow = typeof users.$inferSelect;
+export type NewUserRow = typeof users.$inferInsert;
+export type TweetCacheRow = typeof tweetCache.$inferSelect;
+export type ShareEventRow = typeof shareEvents.$inferSelect;
+export type AdminActionRow = typeof adminActions.$inferSelect;

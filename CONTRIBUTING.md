@@ -34,18 +34,18 @@ to implementing new features — is welcome. This document will help you get sta
 
 ## 🛠 Setting Up the Environment
 
-Requirements: Python 3.12+, Docker (optional), `uv`.
+Requirements: [Bun](https://bun.sh/) 1.1+, Docker (optional).
 
 ```bash
 # 1. Fork the repository and clone your fork
 git clone https://github.com/<your-username>/xtract-bot.git
 cd xtract-bot
 
-# 2. Install uv (if not already installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# 2. Install Bun (if not already installed)
+curl -fsSL https://bun.sh/install | bash
 
 # 3. Install dependencies including dev tools
-uv sync --extra dev
+bun install
 
 # 4. Prepare .env
 cp .env.example .env
@@ -55,10 +55,10 @@ cp .env.example .env
 docker compose up -d postgres
 
 # 6. Apply migrations
-uv run alembic upgrade head
+bun run src/db/migrate.ts
 
 # 7. Run the bot
-uv run python -m app.main
+bun run start
 ```
 
 > 💡 For development it is convenient to use `TWEET_PROVIDER=fake` —
@@ -81,34 +81,34 @@ uv run python -m app.main
 
 ### Branch naming conventions
 
-| Prefix        | Purpose                            | Example                              |
-| ------------- | ---------------------------------- | ------------------------------------ |
-| `feature/`    | New functionality                  | `feature/inline-media-group`         |
-| `fix/`        | Bug fix                            | `fix/cache-ttl-overflow`             |
-| `docs/`       | Documentation                      | `docs/provider-comparison`           |
-| `refactor/`   | Refactoring without behavior change| `refactor/extract-tweet-formatter`   |
-| `test/`       | Tests only                         | `test/public-embed-fallback`         |
-| `chore/`      | Build, CI, dependencies            | `chore/bump-aiogram`                 |
+| Prefix      | Purpose                             | Example                            |
+| ----------- | ----------------------------------- | ---------------------------------- |
+| `feature/`  | New functionality                   | `feature/inline-media-group`       |
+| `fix/`      | Bug fix                             | `fix/cache-ttl-overflow`           |
+| `docs/`     | Documentation                       | `docs/provider-comparison`         |
+| `refactor/` | Refactoring without behavior change | `refactor/extract-tweet-formatter` |
+| `test/`     | Tests only                          | `test/public-embed-fallback`       |
+| `chore/`    | Build, CI, dependencies             | `chore/bump-grammy`                |
 
 ---
 
 ## 🎨 Code Style
 
-The project uses [`ruff`](https://docs.astral.sh/ruff/) for both linting and formatting.
+The project uses [ESLint](https://eslint.org/) for linting and [Prettier](https://prettier.io/) for formatting.
 
 ```bash
-uv run ruff check .          # lint
-uv run ruff check . --fix    # auto-fix
-uv run ruff format .         # format
-uv run ruff format --check . # check without changes (as in CI)
+bun run lint           # lint
+bun run lint -- --fix  # auto-fix
+bun run format         # format
+bun run format:check   # check without changes (as in CI)
+bun run typecheck      # tsc --noEmit
 ```
 
 Additional guidelines:
 
-- 🐍 Target Python version — **3.12** (see `pyproject.toml`).
-- 📏 Line length — **100** characters.
-- 📦 Imports are sorted automatically (ruff `I` rule).
-- 🧠 Use full type hints for public functions and methods.
+- 🟦 TypeScript with `strict: true` and `noUncheckedIndexedAccess`.
+- 📏 Line length — **100** characters (Prettier).
+- 🧠 Prefer explicit return types on exported functions.
 - 🏷️ Names in English, descriptive; avoid abbreviations.
 - 🚫 Do not add code-translation comments; only explain non-obvious "why".
 
@@ -116,13 +116,13 @@ Additional guidelines:
 
 ## 🧪 Tests
 
-Uses `pytest` + `pytest-asyncio` (`asyncio_mode = "auto"`).
+Uses [Vitest](https://vitest.dev/).
 
 ```bash
-uv run pytest                       # all tests
-uv run pytest tests/test_foo.py     # single file
-uv run pytest -k "embed"            # filter by substring
-uv run pytest -x --ff               # stop on first failure, start from failed
+bun run test                        # all tests
+bun run test tests/urls.test.ts     # single file
+bun run test -- -t "embed"          # filter by name pattern
+bun run test:watch                  # watch mode
 ```
 
 Test checklist:
@@ -148,16 +148,16 @@ Test checklist:
 
 Common `type` values:
 
-| Type       | When to use                              |
-| ---------- | ---------------------------------------- |
-| `feat`     | New functionality                        |
-| `fix`      | Bug fix                                  |
-| `docs`     | Documentation only                       |
-| `refactor` | Refactoring without behavior change      |
-| `perf`     | Performance improvement                  |
-| `test`     | Tests                                    |
-| `chore`    | Build, dependencies, configs             |
-| `ci`       | CI/CD changes                            |
+| Type       | When to use                         |
+| ---------- | ----------------------------------- |
+| `feat`     | New functionality                   |
+| `fix`      | Bug fix                             |
+| `docs`     | Documentation only                  |
+| `refactor` | Refactoring without behavior change |
+| `perf`     | Performance improvement             |
+| `test`     | Tests                               |
+| `chore`    | Build, dependencies, configs        |
+| `ci`       | CI/CD changes                       |
 
 Examples:
 
@@ -174,9 +174,10 @@ docs(readme): document TWEET_CACHE_TTL_SECONDS
 Before opening a PR, make sure:
 
 - [ ] Branch is based off a fresh `main`.
-- [ ] `uv run ruff check .` — no errors.
-- [ ] `uv run ruff format --check .` — no changes needed.
-- [ ] `uv run pytest` — all tests green.
+- [ ] `bun run typecheck` — no errors.
+- [ ] `bun run lint` — no errors.
+- [ ] `bun run format:check` — no changes needed.
+- [ ] `bun run test` — all tests green.
 - [ ] Documentation (README, .env.example) updated if necessary.
 - [ ] Tests added / updated for new logic.
 - [ ] PR title is short and descriptive.
@@ -201,7 +202,7 @@ Include:
 - Reproduction steps.
 - Expected and actual behavior.
 - Relevant logs (with `LOG_LEVEL=DEBUG` if possible).
-- Environment: OS, Python, Docker / native run.
+- Environment: OS, Bun / Node version, Docker / native run.
 
 ### Feature request
 

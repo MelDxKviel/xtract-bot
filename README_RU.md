@@ -10,17 +10,15 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/MelDxKviel/xtract-bot/ci.yml?branch=main&label=CI&logo=github&style=for-the-badge)](https://github.com/MelDxKviel/xtract-bot/actions/workflows/ci.yml)
 [![CD](https://img.shields.io/github/actions/workflow/status/MelDxKviel/xtract-bot/cd.yml?branch=main&label=CD&logo=github&style=for-the-badge)](https://github.com/MelDxKviel/xtract-bot/actions/workflows/cd.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
-[![Python 3.14+](https://img.shields.io/badge/Python-3.14%2B-blue?logo=python&logoColor=white&style=for-the-badge)](https://www.python.org/)
+[![TypeScript 5+](https://img.shields.io/badge/TypeScript-5%2B-3178C6?logo=typescript&logoColor=white&style=for-the-badge)](https://www.typescriptlang.org/)
 
-[![aiogram](https://img.shields.io/badge/aiogram-3.17-2CA5E0?logo=telegram&logoColor=white&style=flat-square)](https://docs.aiogram.dev/)
+[![grammY](https://img.shields.io/badge/grammY-1.42-FFCC00?logo=telegram&logoColor=black&style=flat-square)](https://grammy.dev/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791?logo=postgresql&logoColor=white&style=flat-square)](https://www.postgresql.org/)
-[![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00?logo=sqlalchemy&logoColor=white&style=flat-square)](https://www.sqlalchemy.org/)
-[![Alembic](https://img.shields.io/badge/Alembic-1.14-6BA539?style=flat-square)](https://alembic.sqlalchemy.org/)
-[![Pydantic](https://img.shields.io/badge/Pydantic-Settings-E92063?logo=pydantic&logoColor=white&style=flat-square)](https://docs.pydantic.dev/)
+[![Drizzle ORM](https://img.shields.io/badge/Drizzle-ORM-C5F74F?style=flat-square)](https://orm.drizzle.team/)
+[![Bun](https://img.shields.io/badge/runtime-Bun-fbf0df?logo=bun&logoColor=black&style=flat-square)](https://bun.sh/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white&style=flat-square)](https://docs.docker.com/compose/)
-[![uv](https://img.shields.io/badge/packaging-uv-DE5FE9?style=flat-square)](https://github.com/astral-sh/uv)
-[![Ruff](https://img.shields.io/badge/lint-ruff-FCC21B?logo=ruff&logoColor=black&style=flat-square)](https://docs.astral.sh/ruff/)
-[![pytest](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white&style=flat-square)](https://docs.pytest.org/)
+[![ESLint](https://img.shields.io/badge/lint-eslint-4B32C3?logo=eslint&logoColor=white&style=flat-square)](https://eslint.org/)
+[![Vitest](https://img.shields.io/badge/tests-vitest-6E9F18?logo=vitest&logoColor=white&style=flat-square)](https://vitest.dev/)
 
 [Возможности](#-возможности) •
 [Быстрый старт](#-быстрый-старт) •
@@ -42,7 +40,7 @@
 - 💬 **Команды** `/start`, `/help`, `/id`, `/allow`, `/deny`, `/users`, `/stats`, `/health`
 - ⚡ **Inline-режим** с быстрым ответом «Загрузка…» и последующим редактированием
 - 🗄️ **Кеш** успешных ответов в PostgreSQL с настраиваемым TTL
-- 🐳 **Docker Compose** с PostgreSQL и Alembic-миграциями из коробки
+- 🐳 **Docker Compose** с PostgreSQL и миграциями Drizzle из коробки
 - 🔌 **Несколько провайдеров** на выбор: `fake`, `public_embed`, `external_http`, `x_api`
 
 ---
@@ -71,21 +69,21 @@ docker compose -f docker-compose.local.yml up --build
 Контейнер `bot` перед стартом выполняет:
 
 ```bash
-alembic upgrade head
-python -m app.main
+bun run src/db/migrate.ts
+bun run src/main.ts
 ```
 
-> 💡 Docker-образ собирается через `uv sync --frozen --no-dev` и `uv.lock` — никаких сюрпризов с версиями.
+> 💡 Docker-образ собирается на `oven/bun:1.3-alpine` из зафиксированного `bun.lock` — никаких сюрпризов с версиями.
 
 ---
 
 ## ⚙️ Конфигурация
 
-Все переменные читаются через `pydantic-settings`. Образец — в `.env.example`:
+Все переменные читаются через `loadSettings()` (см. `src/config.ts`). Образец — в `.env.example`:
 
 ```env
 BOT_TOKEN=123456:replace-me
-DATABASE_URL=postgresql+asyncpg://xtract:xtract@postgres:5432/xtract
+DATABASE_URL=postgres://xtract:xtract@postgres:5432/xtract
 ADMIN_IDS=123456789,987654321
 ACCESS_WHITELIST_ENABLED=true
 TWEET_PROVIDER=public_embed
@@ -97,42 +95,51 @@ POLLING_ENABLED=true
 
 ### Провайдеры твитов
 
-| Провайдер        | Описание                                                                                              | Требуется                       |
-| ---------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------- |
-| `fake`           | Детерминированный dev-провайдер без обращения к X/Twitter                                             | —                               |
-| `public_embed`   | Публичные FxTwitter / VxTwitter card endpoints с fallback на Twitter oEmbed без токенов и аккаунтов   | —                               |
-| `external_http`  | Внешний сервис `GET /tweets/{tweet_id}`, возвращающий JSON модели `TweetData` или `{ "tweet": ... }`  | `TWEET_PROVIDER_BASE_URL`       |
-| `x_api`          | Официальный X API v2                                                                                  | `X_BEARER_TOKEN`                |
+| Провайдер       | Описание                                                                                             | Требуется                 |
+| --------------- | ---------------------------------------------------------------------------------------------------- | ------------------------- |
+| `fake`          | Детерминированный dev-провайдер без обращения к X/Twitter                                            | —                         |
+| `public_embed`  | Публичные FxTwitter / VxTwitter card endpoints с fallback на Twitter oEmbed без токенов и аккаунтов  | —                         |
+| `external_http` | Внешний сервис `GET /tweets/{tweet_id}`, возвращающий JSON модели `TweetData` или `{ "tweet": ... }` | `TWEET_PROVIDER_BASE_URL` |
+| `x_api`         | Официальный X API v2                                                                                 | `X_BEARER_TOKEN`          |
 
 ### Доступ к боту
 
-| Значение `ACCESS_WHITELIST_ENABLED` | Поведение                                                                                          |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `true`                              | Доступ только для админов и пользователей из whitelist                                             |
-| `false`                             | Бот открыт для всех пользователей; админские команды по-прежнему доступны только из `ADMIN_IDS`    |
+| Значение `ACCESS_WHITELIST_ENABLED` | Поведение                                                                                       |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `true`                              | Доступ только для админов и пользователей из whitelist                                          |
+| `false`                             | Бот открыт для всех пользователей; админские команды по-прежнему доступны только из `ADMIN_IDS` |
 
 ---
 
 ## 💻 Локальный запуск
 
-Установите [`uv`](https://github.com/astral-sh/uv), если он ещё не установлен:
+Установите [Bun](https://bun.sh/), если он ещё не установлен:
 
 ```bash
 # Linux / macOS
-curl -LsSf https://astral.sh/uv/install.sh | sh
+curl -fsSL https://bun.sh/install | bash
 ```
 
 ```powershell
 # Windows PowerShell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+powershell -c "irm bun.sh/install.ps1 | iex"
 ```
 
 Запустите бота:
 
 ```bash
-uv sync --extra dev
-uv run alembic upgrade head
-uv run python -m app.main
+bun install
+bun run src/db/migrate.ts
+bun run start
+```
+
+Полезные скрипты:
+
+```bash
+bun run test          # vitest
+bun run typecheck     # tsc --noEmit
+bun run lint          # eslint
+bun run format        # prettier --write
 ```
 
 ---
@@ -141,21 +148,21 @@ uv run python -m app.main
 
 ### 👤 Пользовательские
 
-| Команда   | Назначение                          |
-| --------- | ----------------------------------- |
-| `/start`  | Приветствие и статус доступа        |
-| `/help`   | Краткая инструкция                  |
-| `/id`     | Telegram ID пользователя            |
+| Команда  | Назначение                   |
+| -------- | ---------------------------- |
+| `/start` | Приветствие и статус доступа |
+| `/help`  | Краткая инструкция           |
+| `/id`    | Telegram ID пользователя     |
 
 ### 🛡️ Администраторские
 
-| Команда                  | Назначение                                  |
-| ------------------------ | ------------------------------------------- |
-| `/allow <telegram_id>`   | Добавить пользователя в whitelist           |
-| `/deny <telegram_id>`    | Убрать пользователя из whitelist            |
-| `/users`                 | Список разрешённых пользователей            |
-| `/stats`                 | Общая статистика и топы                     |
-| `/stats <telegram_id>`   | Статистика отдельного пользователя          |
-| `/health`                | Проверка БД и провайдера                    |
+| Команда                | Назначение                         |
+| ---------------------- | ---------------------------------- |
+| `/allow <telegram_id>` | Добавить пользователя в whitelist  |
+| `/deny <telegram_id>`  | Убрать пользователя из whitelist   |
+| `/users`               | Список разрешённых пользователей   |
+| `/stats`               | Общая статистика и топы            |
+| `/stats <telegram_id>` | Статистика отдельного пользователя |
+| `/health`              | Проверка БД и провайдера           |
 
 ---
