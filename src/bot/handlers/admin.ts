@@ -1,0 +1,109 @@
+import { Composer } from "grammy";
+import { sql as drizzleSql } from "drizzle-orm";
+
+import type { AppContext } from "@/bot/context";
+
+export const adminComposer = new Composer<AppContext>();
+
+const privateChat = adminComposer.filter((ctx) => ctx.chat?.type === "private");
+
+privateChat.command("allow", async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const targetId = parseTelegramId(ctx.match);
+  if (targetId === null) {
+    await ctx.reply("ℹ️ Использование: /allow <telegram_id>");
+    return;
+  }
+  await ctx.services.access.allowUser(targetId);
+  await ctx.repositories.adminActions.create({
+    adminTelegramId: ctx.from!.id,
+    action: "allow",
+    targetTelegramId: targetId,
+  });
+  await ctx.reply(`✅ Пользователь ${targetId} добавлен в whitelist.`);
+});
+
+privateChat.command("deny", async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const targetId = parseTelegramId(ctx.match);
+  if (targetId === null) {
+    await ctx.reply("ℹ️ Использование: /deny <telegram_id>");
+    return;
+  }
+  await ctx.services.access.denyUser(targetId);
+  await ctx.repositories.adminActions.create({
+    adminTelegramId: ctx.from!.id,
+    action: "deny",
+    targetTelegramId: targetId,
+  });
+  await ctx.reply(`🚫 Пользователь ${targetId} удален из whitelist.`);
+});
+
+privateChat.command("users", async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const allowed = await ctx.services.access.listAllowedUsers({ limit: 100 });
+  if (allowed.length === 0) {
+    await ctx.reply("📭 Whitelist пуст.");
+    return;
+  }
+  const lines = ["👥 Разрешенные пользователи:"];
+  for (const user of allowed) {
+    const username = user.username ? ` @${user.username}` : "";
+    lines.push(`• ${user.telegramId}${username}`);
+  }
+  await ctx.reply(lines.join("\n"));
+});
+
+privateChat.command("stats", async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const targetId = ctx.match ? parseTelegramId(ctx.match) : null;
+  const summary = await ctx.services.stats.renderSummary({ telegramUserId: targetId });
+  await ctx.reply(summary);
+});
+
+privateChat.command("health", async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+
+  let dbOk = false;
+  let providerOk = false;
+  try {
+    // Reach into the db handle via the repositories — issue a trivial query
+    // through the transaction-bound tx by calling a no-op via repositories.
+    // We use the share events repo summary as a cheap round-trip.
+    await ctx.repositories.shareEvents.summary({ telegramUserId: -1 });
+    dbOk = true;
+  } catch {
+    dbOk = false;
+  }
+
+  try {
+    providerOk = await ctx.provider.health();
+  } catch {
+    providerOk = false;
+  }
+
+  await ctx.reply(
+    "🏥 Health\n" +
+      `🗄 DB: ${dbOk ? "✅ ok" : "❌ error"}\n` +
+      `🔌 Provider: ${providerOk ? "✅ ok" : "❌ error"}`,
+  );
+});
+
+async function requireAdmin(ctx: AppContext): Promise<boolean> {
+  if (!ctx.from) return false;
+  if (ctx.services.access.isAdmin(ctx.from.id)) return true;
+  await ctx.reply("🔒 Команда доступна только администратору.");
+  return false;
+}
+
+function parseTelegramId(value: string | undefined | null): number | null {
+  if (!value) return null;
+  const item = value.trim().split(/\s+/)[0];
+  if (!item) return null;
+  if (!/^-?\d+$/.test(item)) return null;
+  return Number(item);
+}
+
+// Touch the drizzle import so bundlers preserve it in case future commands
+// need raw SQL — the health command previously used `select 1` directly.
+void drizzleSql;

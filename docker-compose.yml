@@ -22,7 +22,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: sh -c "alembic upgrade head && python -m app.main"
+    command: sh -c "bun run src/db/migrate.ts && bun run src/main.ts"
 
 volumes:
   postgres-data:

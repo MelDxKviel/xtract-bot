@@ -1,17 +1,13 @@
-FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy \
-    PATH="/app/.venv/bin:$PATH"
-
+FROM oven/bun:1.3-alpine AS deps
 WORKDIR /app
+COPY package.json bun.lock* ./
+RUN bun install --frozen-lockfile --production || bun install --production
 
-COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --no-dev --no-install-project
-
-COPY . .
-RUN uv sync --frozen --no-dev
-
-CMD ["python", "-m", "app.main"]
+FROM oven/bun:1.3-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json tsconfig.json ./
+COPY src ./src
+COPY drizzle ./drizzle
+CMD ["bun", "run", "src/main.ts"]
