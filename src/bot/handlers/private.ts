@@ -16,28 +16,38 @@ export const privateComposer = new Composer<AppContext>();
 const privateChat = privateComposer.filter((ctx) => ctx.chat?.type === "private");
 
 privateChat.command("start", async (ctx) => {
-  if (!ctx.from) return;
-  const hasAccess = await ctx.services.access.hasAccess(ctx.from.id);
-  const status = hasAccess ? "🟢 доступ открыт" : "🔒 доступ закрыт";
   await ctx.reply(
     "👋 <b>Xtract Bot</b> помогает красиво пересылать посты X/Twitter в Telegram.\n\n" +
-      `🆔 Ваш Telegram ID: <code>${ctx.from.id}</code>\n` +
-      `📌 Статус: ${status}\n\n` +
-      "📨 Отправьте ссылку на пост после получения доступа.",
+      "📨 Отправьте ссылку на пост X/Twitter в личный чат — бот вытащит текст, медиа " +
+      "и оформит сообщение.\n" +
+      "🔍 Или используйте inline режим: <code>@bot_username &lt;ссылка&gt;</code> в любом чате.\n\n" +
+      "ℹ️ Подробнее: /help",
     { parse_mode: "HTML", link_preview_options: DISABLED_LINK_PREVIEW },
   );
 });
 
 privateChat.command("help", async (ctx) => {
-  await ctx.reply(
+  const isAdmin = ctx.from ? ctx.services.access.isAdmin(ctx.from.id) : false;
+  const baseHelp =
     "📖 <b>Как пользоваться ботом</b>\n\n" +
-      "📨 Отправьте ссылку на пост X/Twitter в личный чат с ботом.\n" +
-      "✅ Поддерживаются: x.com, twitter.com, mobile.twitter.com, vxtwitter.com.\n\n" +
-      "🔍 <b>Inline режим:</b> введите " +
-      "<code>@bot_username &lt;ссылка&gt;</code> в любом чате.\n\n" +
-      "🆔 /id — покажет ваш Telegram ID.",
-    { parse_mode: "HTML", link_preview_options: DISABLED_LINK_PREVIEW },
-  );
+    "📨 Отправьте ссылку на пост X/Twitter в личный чат с ботом.\n" +
+    "✅ Поддерживаются: x.com, twitter.com, mobile.twitter.com, vxtwitter.com.\n\n" +
+    "🔍 <b>Inline режим:</b> введите " +
+    "<code>@bot_username &lt;ссылка&gt;</code> в любом чате.\n\n" +
+    "🆔 /id — покажет ваш Telegram ID.";
+  const adminHelp =
+    "\n\n🛠 <b>Команды администратора</b>\n" +
+    "/panel — сводка по боту и whitelist\n" +
+    "/stats [telegram_id] — статистика (общая или по пользователю)\n" +
+    "/users — список пользователей в whitelist\n" +
+    "/allow &lt;telegram_id&gt; — добавить в whitelist\n" +
+    "/deny &lt;telegram_id&gt; — удалить из whitelist\n" +
+    "/whitelist [on|off] — статус/включить/выключить whitelist\n" +
+    "/health — проверка БД и провайдера";
+  await ctx.reply(baseHelp + (isAdmin ? adminHelp : ""), {
+    parse_mode: "HTML",
+    link_preview_options: DISABLED_LINK_PREVIEW,
+  });
 });
 
 privateChat.command("id", async (ctx) => {

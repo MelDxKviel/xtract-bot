@@ -1,3 +1,4 @@
+import { registerBotCommands } from "@/bot/commands";
 import { buildBot } from "@/bot/dispatcher";
 import { loadSettings } from "@/config";
 import { closeDatabase, createDatabase } from "@/db/client";
@@ -57,6 +58,11 @@ async function main(): Promise<void> {
 
   log.info("starting bot in polling mode");
   await bot.api.deleteWebhook({ drop_pending_updates: true });
+  try {
+    await registerBotCommands(bot, settings);
+  } catch (error) {
+    log.error("failed to register bot commands", error);
+  }
   try {
     await bot.start({ onStart: () => log.info("bot is running") });
   } finally {
