@@ -58,7 +58,7 @@ async function main(): Promise<void> {
   log.info("starting bot in polling mode");
   await bot.api.deleteWebhook({ drop_pending_updates: true });
   try {
-    await bot.start();
+    await bot.start({ onStart: () => log.info("bot is running") });
   } finally {
     log.info("draining in-flight handlers");
     await Promise.allSettled(inFlight);
