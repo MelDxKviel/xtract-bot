@@ -17,7 +17,12 @@ interface Deps {
   runtimeConfig: RuntimeConfig;
 }
 
-export function sessionMiddleware({ db, settings, provider, runtimeConfig }: Deps): MiddlewareFn<AppContext> {
+export function sessionMiddleware({
+  db,
+  settings,
+  provider,
+  runtimeConfig,
+}: Deps): MiddlewareFn<AppContext> {
   return async (ctx, next) => {
     await db.transaction(async (tx) => {
       const repositories = createRepositories(tx);
