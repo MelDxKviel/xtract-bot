@@ -1,5 +1,4 @@
 import { Composer } from "grammy";
-import { sql as drizzleSql } from "drizzle-orm";
 
 import type { AppContext } from "@/bot/context";
 
@@ -61,6 +60,47 @@ privateChat.command("stats", async (ctx) => {
   await ctx.reply(summary);
 });
 
+privateChat.command("whitelist", async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const arg = ctx.match?.trim().toLowerCase();
+  if (arg === "on") {
+    ctx.runtimeConfig.whitelistEnabled = true;
+    await ctx.reply("✅ Whitelist включён.");
+  } else if (arg === "off") {
+    ctx.runtimeConfig.whitelistEnabled = false;
+    await ctx.reply("🔓 Whitelist выключен — доступ открыт для всех.");
+  } else {
+    const status = ctx.runtimeConfig.whitelistEnabled ? "✅ включён" : "🔓 выключен";
+    await ctx.reply(
+      `📋 Whitelist: ${status}\n\n` +
+        "Управление:\n" +
+        "/whitelist on — включить\n" +
+        "/whitelist off — выключить",
+    );
+  }
+});
+
+privateChat.command("panel", async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const [summary, allowed] = await Promise.all([
+    ctx.services.stats.getSummary(),
+    ctx.services.access.listAllowedUsers({ limit: 100 }),
+  ]);
+  const whitelistStatus = ctx.runtimeConfig.whitelistEnabled ? "✅ включён" : "🔓 выключен";
+  await ctx.reply(
+    "🛠 Панель управления\n\n" +
+      `📋 Whitelist: ${whitelistStatus}\n` +
+      `👥 В whitelist: ${allowed.length}\n\n` +
+      "📊 Статистика\n" +
+      `🔢 Всего: ${summary.total}\n` +
+      `✅ Успешно: ${summary.success}\n` +
+      `❌ Ошибки: ${summary.errors}\n` +
+      `💬 Личный чат: ${summary.private}\n` +
+      `🔍 Inline: ${summary.inline}\n` +
+      `👤 Пользователей: ${summary.users}`,
+  );
+});
+
 privateChat.command("health", async (ctx) => {
   if (!(await requireAdmin(ctx))) return;
 
@@ -104,6 +144,3 @@ function parseTelegramId(value: string | undefined | null): number | null {
   return Number(item);
 }
 
-// Touch the drizzle import so bundlers preserve it in case future commands
-// need raw SQL — the health command previously used `select 1` directly.
-void drizzleSql;
