@@ -82,15 +82,15 @@ privateChat.command("whitelist", async (ctx) => {
 
 privateChat.command("panel", async (ctx) => {
   if (!(await requireAdmin(ctx))) return;
-  const [summary, allowed] = await Promise.all([
+  const [summary, allowedCount] = await Promise.all([
     ctx.services.stats.getSummary(),
-    ctx.services.access.listAllowedUsers({ limit: 100 }),
+    ctx.services.access.countAllowedUsers(),
   ]);
   const whitelistStatus = ctx.runtimeConfig.whitelistEnabled ? "✅ включён" : "🔓 выключен";
   await ctx.reply(
     "🛠 Панель управления\n\n" +
       `📋 Whitelist: ${whitelistStatus}\n` +
-      `👥 В whitelist: ${allowed.length}\n\n` +
+      `👥 В whitelist: ${allowedCount}\n\n` +
       "📊 Статистика\n" +
       `🔢 Всего: ${summary.total}\n` +
       `✅ Успешно: ${summary.success}\n` +

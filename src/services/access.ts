@@ -10,7 +10,7 @@ export interface TelegramUserInfo {
 
 type AccessUserRepository = Pick<
   UserRepository,
-  "upsert" | "isAllowed" | "setAllowed" | "listAllowed"
+  "upsert" | "isAllowed" | "setAllowed" | "listAllowed" | "countAllowed"
 >;
 
 export interface AccessService {
@@ -20,6 +20,7 @@ export interface AccessService {
   allowUser(telegramId: number): Promise<void>;
   denyUser(telegramId: number): Promise<void>;
   listAllowedUsers(options?: { limit?: number }): Promise<UserRow[]>;
+  countAllowedUsers(): Promise<number>;
 }
 
 export function createAccessService(
@@ -52,6 +53,9 @@ export function createAccessService(
     },
     async listAllowedUsers(opts): Promise<UserRow[]> {
       return userRepository.listAllowed({ limit: opts?.limit ?? 100 }) as Promise<UserRow[]>;
+    },
+    async countAllowedUsers(): Promise<number> {
+      return userRepository.countAllowed();
     },
   };
 }
