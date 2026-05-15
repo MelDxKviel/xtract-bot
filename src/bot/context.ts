@@ -13,9 +13,14 @@ export interface AppServices {
   tweetShare: TweetShareService;
 }
 
+export interface RuntimeConfig {
+  whitelistEnabled: boolean;
+}
+
 export type AppContext = Context & {
   settings: Settings;
   provider: TweetProvider;
   repositories: Repositories;
   services: AppServices;
+  runtimeConfig: RuntimeConfig;
 };

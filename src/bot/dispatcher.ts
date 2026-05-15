@@ -4,7 +4,7 @@ import type { Settings } from "@/config";
 import type { Database } from "@/db/client";
 import type { TweetProvider } from "@/providers/base";
 
-import type { AppContext } from "@/bot/context";
+import type { AppContext, RuntimeConfig } from "@/bot/context";
 import { adminComposer } from "@/bot/handlers/admin";
 import { inlineComposer } from "@/bot/handlers/inline";
 import { privateComposer } from "@/bot/handlers/private";
@@ -20,7 +20,8 @@ interface BuildBotDeps {
 export function buildBot({ settings, db, provider }: BuildBotDeps): Bot<AppContext> {
   const bot = new Bot<AppContext>(settings.botToken);
 
-  bot.use(sessionMiddleware({ db, settings, provider }));
+  const runtimeConfig: RuntimeConfig = { whitelistEnabled: settings.accessWhitelistEnabled };
+  bot.use(sessionMiddleware({ db, settings, provider, runtimeConfig }));
   bot.use(accessMiddleware);
 
   bot.use(adminComposer);
