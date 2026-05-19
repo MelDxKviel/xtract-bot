@@ -1,10 +1,20 @@
 import { Composer, GrammyError, type InlineKeyboard } from "grammy";
-import type { InputMediaAnimation, InputMediaPhoto, InputMediaVideo } from "grammy/types";
+import type {
+  InlineQueryResult,
+  InputMediaAnimation,
+  InputMediaPhoto,
+  InputMediaVideo,
+} from "grammy/types";
 
 import type { AppContext } from "@/bot/context";
 import { DISABLED_LINK_PREVIEW, originalPostButton } from "@/bot/ui";
+import { formatTweet } from "@/formatters/telegram";
 import type { TweetMedia } from "@/providers/base";
+import { languageNameInRussian, translateTweet, TranslationError } from "@/services/translation";
 import { extractFirstTweetUrl } from "@/utils/urls";
+
+const TRANSLATED_ID_PREFIX = "tweet-ru-";
+const DEFAULT_ID_PREFIX = "tweet-";
 
 export const inlineComposer = new Composer<AppContext>();
 
@@ -29,28 +39,46 @@ inlineComposer.on("inline_query", async (ctx) => {
     return;
   }
 
-  await ctx.answerInlineQuery(
-    [
-      {
-        type: "article",
-        id: `tweet-${parsed.tweetId}`,
-        title: "📤 Поделиться постом",
-        description: parsed.normalizedUrl,
-        input_message_content: {
-          message_text: "⏳ Загрузка поста...",
-          parse_mode: "HTML",
-          link_preview_options: DISABLED_LINK_PREVIEW,
-        },
-        reply_markup: originalPostButton(parsed.normalizedUrl),
+  const results: InlineQueryResult[] = [
+    {
+      type: "article",
+      id: `${DEFAULT_ID_PREFIX}${parsed.tweetId}`,
+      title: "📤 Поделиться постом",
+      description: parsed.normalizedUrl,
+      input_message_content: {
+        message_text: "⏳ Загрузка поста...",
+        parse_mode: "HTML",
+        link_preview_options: DISABLED_LINK_PREVIEW,
       },
-    ],
-    { cache_time: 1, is_personal: true },
-  );
+      reply_markup: originalPostButton(parsed.normalizedUrl),
+    },
+  ];
+
+  if (ctx.runtimeConfig.russianTranslationEnabled) {
+    results.push({
+      type: "article",
+      id: `${TRANSLATED_ID_PREFIX}${parsed.tweetId}`,
+      title: "🇷🇺 Отправить на русском (beta)",
+      description: parsed.normalizedUrl,
+      input_message_content: {
+        message_text: "⏳ Переводим пост на русский...",
+        parse_mode: "HTML",
+        link_preview_options: DISABLED_LINK_PREVIEW,
+      },
+      reply_markup: originalPostButton(parsed.normalizedUrl),
+    });
+  }
+
+  await ctx.answerInlineQuery(results, { cache_time: 1, is_personal: true });
 });
 
 inlineComposer.on("chosen_inline_result", async (ctx) => {
   const inlineMessageId = ctx.chosenInlineResult.inline_message_id;
   if (!inlineMessageId) return;
+
+  const resultId = ctx.chosenInlineResult.result_id;
+  const translateToRussian =
+    resultId.startsWith(TRANSLATED_ID_PREFIX) && ctx.runtimeConfig.russianTranslationEnabled;
 
   const parsed = extractFirstTweetUrl(ctx.chosenInlineResult.query ?? "");
   if (parsed === null) {
@@ -75,12 +103,36 @@ inlineComposer.on("chosen_inline_result", async (ctx) => {
 
   const originalUrl = share.tweet?.url ?? parsed.normalizedUrl;
   const button = originalPostButton(originalUrl);
-  if (share.post.media.length > 0) {
-    await safeEditMedia(ctx, inlineMessageId, share.post.media[0]!, share.post.captionHtml, button);
+
+  let post = share.post;
+  if (translateToRussian && share.tweet) {
+    try {
+      const translated = await translateTweet(share.tweet, ctx.translator);
+      post = formatTweet(translated.tweet, {
+        originalLanguageLabel: languageNameInRussian(translated.sourceLang),
+      });
+    } catch (error) {
+      if (error instanceof TranslationError) {
+        console.error("translation failed", error.code, error.message);
+      } else {
+        console.error("translation unexpected error", error);
+      }
+      await safeEditText(
+        ctx,
+        inlineMessageId,
+        "⚠️ Не удалось перевести пост. Попробуйте поделиться оригиналом.",
+        button,
+      );
+      return;
+    }
+  }
+
+  if (post.media.length > 0) {
+    await safeEditMedia(ctx, inlineMessageId, post.media[0]!, post.captionHtml, button);
     return;
   }
 
-  await safeEditText(ctx, inlineMessageId, share.post.html, button);
+  await safeEditText(ctx, inlineMessageId, post.html, button);
 });
 
 async function safeEditText(

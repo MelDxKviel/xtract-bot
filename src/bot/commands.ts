@@ -18,6 +18,7 @@ const ADMIN_COMMANDS: BotCommand[] = [
   { command: "allow", description: "Добавить в whitelist" },
   { command: "deny", description: "Удалить из whitelist" },
   { command: "whitelist", description: "Управление whitelist" },
+  { command: "translate", description: "Перевод на русский (beta)" },
   { command: "health", description: "Проверка БД и провайдера" },
 ];
 

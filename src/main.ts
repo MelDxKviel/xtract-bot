@@ -4,6 +4,7 @@ import { loadSettings } from "@/config";
 import { closeDatabase, createDatabase } from "@/db/client";
 import { configureLogging, log } from "@/logging";
 import { createTweetProvider } from "@/providers/factory";
+import { createTranslator } from "@/services/translation";
 
 async function main(): Promise<void> {
   const settings = loadSettings();
@@ -11,7 +12,8 @@ async function main(): Promise<void> {
 
   const dbHandle = createDatabase(settings.databaseUrl);
   const provider = createTweetProvider(settings);
-  const bot = buildBot({ settings, db: dbHandle.db, provider });
+  const translator = createTranslator({ timeoutSeconds: settings.translationTimeoutSeconds });
+  const bot = buildBot({ settings, db: dbHandle.db, provider, translator });
 
   // Apply HTML parse mode and disabled link preview as Bot API defaults.
   bot.api.config.use((prev, method, payload, signal) => {

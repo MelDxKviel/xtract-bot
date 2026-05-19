@@ -126,4 +126,23 @@ describe("formatTweet", () => {
     expect(post.media.length).toBe(10);
     expect(post.extraMediaCount).toBe(2);
   });
+
+  it("appends italic original-language footer when requested", () => {
+    const post = formatTweet(makeTweetData(), { originalLanguageLabel: "английский" });
+    expect(post.html).toContain("<i>Язык оригинала: английский</i>");
+    expect(post.captionHtml).toContain("<i>Язык оригинала: английский</i>");
+  });
+
+  it("escapes the language label", () => {
+    const post = formatTweet(makeTweetData(), { originalLanguageLabel: "<lang>" });
+    expect(post.html).toContain("<i>Язык оригинала: &lt;lang&gt;</i>");
+  });
+
+  it("respects the caption limit when adding the language footer", () => {
+    const post = formatTweet(makeTweetData({ text: "x".repeat(5000) }), {
+      originalLanguageLabel: "английский",
+    });
+    expect(post.captionHtml.length).toBeLessThanOrEqual(CAPTION_LIMIT);
+    expect(post.captionHtml).toContain("<i>Язык оригинала: английский</i>");
+  });
 });

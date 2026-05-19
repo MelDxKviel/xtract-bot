@@ -43,6 +43,7 @@ privateChat.command("help", async (ctx) => {
     "/allow &lt;telegram_id&gt; — добавить в whitelist\n" +
     "/deny &lt;telegram_id&gt; — удалить из whitelist\n" +
     "/whitelist [on|off] — статус/включить/выключить whitelist\n" +
+    "/translate [on|off] — перевод на русский в inline (beta)\n" +
     "/health — проверка БД и провайдера";
   await ctx.reply(baseHelp + (isAdmin ? adminHelp : ""), {
     parse_mode: "HTML",

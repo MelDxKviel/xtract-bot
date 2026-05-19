@@ -15,13 +15,17 @@ export interface TelegramPost {
   extraMediaCount: number;
 }
 
-export function formatTweet(tweet: TweetData): TelegramPost {
+export interface FormatOptions {
+  originalLanguageLabel?: string | null;
+}
+
+export function formatTweet(tweet: TweetData, options: FormatOptions = {}): TelegramPost {
   const media = tweet.media.slice(0, MAX_MEDIA);
   const linkHtml = originalPostLinkHtml(tweet.url);
   const suffixLen = "\n\n".length + linkHtml.length;
   return {
-    html: renderTweetHtml(tweet, MESSAGE_LIMIT - suffixLen),
-    captionHtml: renderTweetHtml(tweet, CAPTION_LIMIT - suffixLen),
+    html: renderTweetHtml(tweet, MESSAGE_LIMIT - suffixLen, options),
+    captionHtml: renderTweetHtml(tweet, CAPTION_LIMIT - suffixLen, options),
     linkHtml,
     media,
     extraMediaCount: Math.max(0, tweet.media.length - MAX_MEDIA),
@@ -32,12 +36,20 @@ export function originalPostLinkHtml(url: string): string {
   return `<a href="${escapeAttr(url)}">${ORIGINAL_POST_LABEL}</a>`;
 }
 
-export function renderTweetHtml(tweet: TweetData, limit: number = MESSAGE_LIMIT): string {
+export function renderTweetHtml(
+  tweet: TweetData,
+  limit: number = MESSAGE_LIMIT,
+  options: FormatOptions = {},
+): string {
   let rawText = (tweet.text ?? "Пост без текста.").trim() || "Пост без текста.";
   if (tweet.repliedToTweet) {
     const stripped = rawText.replace(LEADING_MENTIONS_RE, "").trim();
     if (stripped) rawText = stripped;
   }
+
+  const languageFooter = options.originalLanguageLabel
+    ? `<i>Язык оригинала: ${escapeHtml(options.originalLanguageLabel)}</i>`
+    : null;
 
   const build = (text: string): string => {
     const parts: string[] = [authorHtml(tweet), "", escapeHtml(text)];
@@ -49,6 +61,9 @@ export function renderTweetHtml(tweet: TweetData, limit: number = MESSAGE_LIMIT)
     }
     if (tweet.media.length > MAX_MEDIA) {
       parts.push("", `📎 Показаны первые ${MAX_MEDIA} медиа из ${tweet.media.length}.`);
+    }
+    if (languageFooter) {
+      parts.push("", languageFooter);
     }
     return parts.join("\n");
   };
