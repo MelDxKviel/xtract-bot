@@ -7,7 +7,14 @@ import type {
 } from "grammy/types";
 
 import type { AppContext } from "@/bot/context";
-import { DISABLED_LINK_PREVIEW, originalPostButton } from "@/bot/ui";
+import {
+  DISABLED_LINK_PREVIEW,
+  INLINE_THUMBNAIL_INVALID,
+  INLINE_THUMBNAIL_SHARE,
+  INLINE_THUMBNAIL_SIZE,
+  INLINE_THUMBNAIL_TRANSLATE_RU,
+  originalPostButton,
+} from "@/bot/ui";
 import { formatTweet } from "@/formatters/telegram";
 import type { TweetMedia } from "@/providers/base";
 import { languageNameInRussian, translateTweet, TranslationError } from "@/services/translation";
@@ -26,8 +33,11 @@ inlineComposer.on("inline_query", async (ctx) => {
         {
           type: "article",
           id: "invalid-link",
-          title: "🔗 Нужна ссылка на пост X/Twitter",
+          title: "Нужна ссылка на пост X/Twitter",
           description: "Например: https://x.com/user/status/123",
+          thumbnail_url: INLINE_THUMBNAIL_INVALID,
+          thumbnail_width: INLINE_THUMBNAIL_SIZE,
+          thumbnail_height: INLINE_THUMBNAIL_SIZE,
           input_message_content: {
             message_text: "🔗 Пришлите ссылку на пост X/Twitter.",
             link_preview_options: DISABLED_LINK_PREVIEW,
@@ -43,8 +53,11 @@ inlineComposer.on("inline_query", async (ctx) => {
     {
       type: "article",
       id: `${DEFAULT_ID_PREFIX}${parsed.tweetId}`,
-      title: "📤 Поделиться постом",
+      title: "Поделиться постом",
       description: parsed.normalizedUrl,
+      thumbnail_url: INLINE_THUMBNAIL_SHARE,
+      thumbnail_width: INLINE_THUMBNAIL_SIZE,
+      thumbnail_height: INLINE_THUMBNAIL_SIZE,
       input_message_content: {
         message_text: "⏳ Загрузка поста...",
         parse_mode: "HTML",
@@ -58,8 +71,11 @@ inlineComposer.on("inline_query", async (ctx) => {
     results.push({
       type: "article",
       id: `${TRANSLATED_ID_PREFIX}${parsed.tweetId}`,
-      title: "🇷🇺 Отправить на русском (beta)",
+      title: "Отправить на русском (beta)",
       description: parsed.normalizedUrl,
+      thumbnail_url: INLINE_THUMBNAIL_TRANSLATE_RU,
+      thumbnail_width: INLINE_THUMBNAIL_SIZE,
+      thumbnail_height: INLINE_THUMBNAIL_SIZE,
       input_message_content: {
         message_text: "⏳ Переводим пост на русский...",
         parse_mode: "HTML",
