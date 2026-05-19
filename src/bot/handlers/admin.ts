@@ -1,6 +1,8 @@
-import { Composer } from "grammy";
+import { Composer, InlineKeyboard } from "grammy";
 
 import type { AppContext } from "@/bot/context";
+
+const PANEL_TOGGLE_TRANSLATE = "panel:translate:toggle";
 
 export const adminComposer = new Composer<AppContext>();
 
@@ -80,25 +82,56 @@ privateChat.command("whitelist", async (ctx) => {
   }
 });
 
+privateChat.command("translate", async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const arg = ctx.match?.trim().toLowerCase();
+  if (arg === "on") {
+    ctx.runtimeConfig.russianTranslationEnabled = true;
+    await ctx.reply("✅ Перевод на русский (beta) включён.");
+  } else if (arg === "off") {
+    ctx.runtimeConfig.russianTranslationEnabled = false;
+    await ctx.reply("🔕 Перевод на русский (beta) выключен.");
+  } else {
+    const status = ctx.runtimeConfig.russianTranslationEnabled ? "✅ включён" : "🔕 выключен";
+    await ctx.reply(
+      `🇷🇺 Перевод на русский (beta): ${status}\n\n` +
+        "Управление:\n" +
+        "/translate on — включить\n" +
+        "/translate off — выключить",
+    );
+  }
+});
+
 privateChat.command("panel", async (ctx) => {
   if (!(await requireAdmin(ctx))) return;
-  const [summary, allowedCount] = await Promise.all([
-    ctx.services.stats.getSummary(),
-    ctx.services.access.countAllowedUsers(),
-  ]);
-  const whitelistStatus = ctx.runtimeConfig.whitelistEnabled ? "✅ включён" : "🔓 выключен";
-  await ctx.reply(
-    "🛠 Панель управления\n\n" +
-      `📋 Whitelist: ${whitelistStatus}\n` +
-      `👥 В whitelist: ${allowedCount}\n\n` +
-      "📊 Статистика\n" +
-      `🔢 Всего: ${summary.total}\n` +
-      `✅ Успешно: ${summary.success}\n` +
-      `❌ Ошибки: ${summary.errors}\n` +
-      `💬 Личный чат: ${summary.private}\n` +
-      `🔍 Inline: ${summary.inline}\n` +
-      `👤 Пользователей: ${summary.users}`,
-  );
+  await ctx.reply(await renderPanelText(ctx), {
+    parse_mode: "HTML",
+    reply_markup: renderPanelKeyboard(ctx),
+  });
+});
+
+privateChat.callbackQuery(PANEL_TOGGLE_TRANSLATE, async (ctx) => {
+  if (!ctx.from || !ctx.services.access.isAdmin(ctx.from.id)) {
+    await ctx.answerCallbackQuery({
+      text: "🔒 Только для администраторов",
+      show_alert: true,
+    });
+    return;
+  }
+  ctx.runtimeConfig.russianTranslationEnabled = !ctx.runtimeConfig.russianTranslationEnabled;
+  try {
+    await ctx.editMessageText(await renderPanelText(ctx), {
+      parse_mode: "HTML",
+      reply_markup: renderPanelKeyboard(ctx),
+    });
+  } catch {
+    // ignore "message is not modified" or other edit errors
+  }
+  await ctx.answerCallbackQuery({
+    text: ctx.runtimeConfig.russianTranslationEnabled
+      ? "✅ Перевод на русский включён"
+      : "🔕 Перевод на русский выключен",
+  });
 });
 
 privateChat.command("health", async (ctx) => {
@@ -128,6 +161,37 @@ privateChat.command("health", async (ctx) => {
       `🔌 Provider: ${providerOk ? "✅ ok" : "❌ error"}`,
   );
 });
+
+async function renderPanelText(ctx: AppContext): Promise<string> {
+  const [summary, allowedCount] = await Promise.all([
+    ctx.services.stats.getSummary(),
+    ctx.services.access.countAllowedUsers(),
+  ]);
+  const whitelistStatus = ctx.runtimeConfig.whitelistEnabled ? "✅ включён" : "🔓 выключен";
+  const translateStatus = ctx.runtimeConfig.russianTranslationEnabled
+    ? "✅ включён"
+    : "🔕 выключен";
+  return (
+    "🛠 Панель управления\n\n" +
+    `📋 Whitelist: ${whitelistStatus}\n` +
+    `🇷🇺 Перевод на русский (beta): ${translateStatus}\n` +
+    `👥 В whitelist: ${allowedCount}\n\n` +
+    "📊 Статистика\n" +
+    `🔢 Всего: ${summary.total}\n` +
+    `✅ Успешно: ${summary.success}\n` +
+    `❌ Ошибки: ${summary.errors}\n` +
+    `💬 Личный чат: ${summary.private}\n` +
+    `🔍 Inline: ${summary.inline}\n` +
+    `👤 Пользователей: ${summary.users}`
+  );
+}
+
+function renderPanelKeyboard(ctx: AppContext): InlineKeyboard {
+  const label = ctx.runtimeConfig.russianTranslationEnabled
+    ? "🔕 Выключить перевод на русский (beta)"
+    : "🇷🇺 Включить перевод на русский (beta)";
+  return new InlineKeyboard().text(label, PANEL_TOGGLE_TRANSLATE);
+}
 
 async function requireAdmin(ctx: AppContext): Promise<boolean> {
   if (!ctx.from) return false;

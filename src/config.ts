@@ -5,9 +5,11 @@ export interface Settings {
   databaseUrl: string;
   adminIds: ReadonlySet<number>;
   accessWhitelistEnabled: boolean;
+  russianTranslationEnabled: boolean;
   tweetProvider: TweetProviderName;
   tweetCacheTtlSeconds: number;
   tweetProviderTimeoutSeconds: number;
+  translationTimeoutSeconds: number;
   logLevel: string;
   webhookUrl: string | null;
   webhookSecret: string | null;
@@ -37,9 +39,11 @@ export function loadSettings(env: Record<string, string | undefined> = process.e
     databaseUrl,
     adminIds,
     accessWhitelistEnabled: parseBool(env["ACCESS_WHITELIST_ENABLED"], true),
+    russianTranslationEnabled: parseBool(env["RUSSIAN_TRANSLATION_ENABLED"], false),
     tweetProvider: provider,
     tweetCacheTtlSeconds: parseInt(env["TWEET_CACHE_TTL_SECONDS"], 86_400),
     tweetProviderTimeoutSeconds: parseFloat(env["TWEET_PROVIDER_TIMEOUT_SECONDS"], 10),
+    translationTimeoutSeconds: parseFloat(env["TRANSLATION_TIMEOUT_SECONDS"], 8),
     logLevel: env["LOG_LEVEL"] ?? "INFO",
     webhookUrl: nonEmpty(env["WEBHOOK_URL"]),
     webhookSecret: nonEmpty(env["WEBHOOK_SECRET"]),
