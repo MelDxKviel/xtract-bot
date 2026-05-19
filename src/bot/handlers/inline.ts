@@ -33,7 +33,7 @@ inlineComposer.on("inline_query", async (ctx) => {
         {
           type: "article",
           id: "invalid-link",
-          title: "🔗 Нужна ссылка на пост X/Twitter",
+          title: "Нужна ссылка на пост X/Twitter",
           description: "Например: https://x.com/user/status/123",
           thumbnail_url: INLINE_THUMBNAIL_INVALID,
           thumbnail_width: INLINE_THUMBNAIL_SIZE,
@@ -53,7 +53,7 @@ inlineComposer.on("inline_query", async (ctx) => {
     {
       type: "article",
       id: `${DEFAULT_ID_PREFIX}${parsed.tweetId}`,
-      title: "📤 Поделиться постом",
+      title: "Поделиться постом",
       description: parsed.normalizedUrl,
       thumbnail_url: INLINE_THUMBNAIL_SHARE,
       thumbnail_width: INLINE_THUMBNAIL_SIZE,
@@ -71,7 +71,7 @@ inlineComposer.on("inline_query", async (ctx) => {
     results.push({
       type: "article",
       id: `${TRANSLATED_ID_PREFIX}${parsed.tweetId}`,
-      title: "🇷🇺 Отправить на русском (beta)",
+      title: "Отправить на русском (beta)",
       description: parsed.normalizedUrl,
       thumbnail_url: INLINE_THUMBNAIL_TRANSLATE_RU,
       thumbnail_width: INLINE_THUMBNAIL_SIZE,
