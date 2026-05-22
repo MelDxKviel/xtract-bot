@@ -41,7 +41,7 @@ export function renderTweetHtml(
   limit: number = MESSAGE_LIMIT,
   options: FormatOptions = {},
 ): string {
-  let rawText = (tweet.text ?? "Пост без текста.").trim() || "Пост без текста.";
+  let rawText = (tweet.text ?? "").trim();
   if (tweet.repliedToTweet) {
     const stripped = rawText.replace(LEADING_MENTIONS_RE, "").trim();
     if (stripped) rawText = stripped;
@@ -52,7 +52,7 @@ export function renderTweetHtml(
     : null;
 
   const build = (text: string): string => {
-    const parts: string[] = [authorHtml(tweet), "", escapeHtml(text)];
+    const parts: string[] = text ? [authorHtml(tweet), "", escapeHtml(text)] : [authorHtml(tweet)];
     const related = tweet.quotedTweet ?? tweet.repliedToTweet;
     const relatedBody = related ? relatedHtml(related) : null;
     if (related && relatedBody) {
@@ -96,9 +96,9 @@ function relatedTitleHtml(tweet: TweetData, quoted: boolean): string {
 }
 
 function relatedHtml(tweet: TweetData): string {
-  const text = (tweet.text ?? "Пост без текста.").trim() || "Пост без текста.";
+  const text = (tweet.text ?? "").trim();
   const label = `${tweet.authorName} (@${tweet.authorUsername})`;
-  return `${escapeHtml(label)}:\n${escapeHtml(truncateRaw(text, 500))}`;
+  return text ? `${escapeHtml(label)}:\n${escapeHtml(truncateRaw(text, 500))}` : escapeHtml(label);
 }
 
 function truncateRaw(value: string, maxLength: number): string {
