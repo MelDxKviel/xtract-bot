@@ -35,6 +35,9 @@ export class ExternalHttpTweetProvider implements TweetProvider {
     try {
       response = await this.fetchImpl(url, { headers, signal });
     } catch (error) {
+      if ((error as Error).name === "AbortError") {
+        throw new TweetProviderError("request timed out", { code: "provider_timeout" });
+      }
       throw new TweetProviderError(String(error), { code: "provider_http_error" });
     } finally {
       clear();
