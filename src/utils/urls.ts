@@ -1,6 +1,6 @@
 const SUPPORTED_HOSTS = new Set(["x.com", "twitter.com", "mobile.twitter.com", "vxtwitter.com"]);
 const URL_RE =
-  /(?<![\w@.])(?:https?:\/\/)?(?:www\.)?(?:mobile\.twitter\.com|vxtwitter\.com|x\.com|twitter\.com)\/[^\s<>()]+/gi;
+  /(?<![\w@.])(?:[a-z][a-z0-9+.-]*:\/\/)?(?:www\.)?(?:mobile\.twitter\.com|vxtwitter\.com|x\.com|twitter\.com)\/[^\s<>()]+/gi;
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
 const TRAILING_PUNCTUATION = ".,;:!?)]}>'\"";
 

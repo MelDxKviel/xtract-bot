@@ -54,6 +54,17 @@ describe("parseTweetUrl", () => {
     expect(extractFirstTweetUrl("visit notx.com/user/status/123")).toBeNull();
   });
 
+  it("rejects supported hosts behind an unsupported scheme", () => {
+    expect(parseTweetUrl("ftp://x.com/user/status/123")).toBeNull();
+    expect(extractFirstTweetUrl("link ftp://x.com/user/status/123 here")).toBeNull();
+  });
+
+  it("still extracts a supported host nested in another url path", () => {
+    const parsed = extractFirstTweetUrl("https://example.com/https://x.com/user/status/7");
+    expect(parsed).not.toBeNull();
+    expect(parsed!.tweetId).toBe("7");
+  });
+
   it("returns null for invalid urls", () => {
     expect(parseTweetUrl("https://example.com/user/status/123")).toBeNull();
     expect(parseTweetUrl("https://x.com/user/not-status/123")).toBeNull();
