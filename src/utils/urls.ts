@@ -1,6 +1,7 @@
 const SUPPORTED_HOSTS = new Set(["x.com", "twitter.com", "mobile.twitter.com", "vxtwitter.com"]);
 const URL_RE =
-  /https?:\/\/(?:www\.)?(?:x\.com|twitter\.com|mobile\.twitter\.com|vxtwitter\.com)\/[^\s<>()]+/gi;
+  /(?<![\w@.])(?:https?:\/\/)?(?:www\.)?(?:mobile\.twitter\.com|vxtwitter\.com|x\.com|twitter\.com)\/[^\s<>()]+/gi;
+const SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
 const TRAILING_PUNCTUATION = ".,;:!?)]}>'\"";
 
 export interface ParsedTweetUrl {
@@ -25,9 +26,11 @@ export function parseTweetUrl(rawUrl: string): ParsedTweetUrl | null {
     sourceUrl = sourceUrl.slice(0, -1);
   }
 
+  const candidate = SCHEME_RE.test(sourceUrl) ? sourceUrl : `https://${sourceUrl}`;
+
   let parsed: URL;
   try {
-    parsed = new URL(sourceUrl);
+    parsed = new URL(candidate);
   } catch {
     return null;
   }
