@@ -3,13 +3,17 @@ import type { InputMediaPhoto, InputMediaVideo } from "grammy/types";
 
 import { DISABLED_LINK_PREVIEW, originalPostButton } from "@/bot/ui";
 import type { AppContext } from "@/bot/context";
+import { buildRichMessage } from "@/formatters/richMessage";
 import type { TweetMedia } from "@/providers/base";
 import type { ShareResult } from "@/services/tweetShare";
+import { extractFirstTweetUrl } from "@/utils/urls";
 
 const INVALID_LINK_TEXT =
   "🔗 Пришлите ссылку на пост X/Twitter, например https://x.com/user/status/123";
 const FETCH_ERROR_TEXT =
   "⚠️ Не удалось получить пост. Возможно, он удален, приватный или временно недоступен.";
+// Caption shown inside the animated "generating" placeholder (rich draft).
+const THINKING_CAPTION = "Загружаю пост…";
 
 export const privateComposer = new Composer<AppContext>();
 
@@ -64,6 +68,11 @@ privateChat.on("message:text", async (ctx) => {
     return;
   }
 
+  // Show an animated "generating" placeholder while we fetch (private chats only).
+  if (extractFirstTweetUrl(text) !== null) {
+    await sendThinkingDraft(ctx);
+  }
+
   const result = await ctx.services.tweetShare.processText(text, {
     telegramUserId: ctx.from.id,
     chatId: ctx.chat.id,
@@ -71,6 +80,19 @@ privateChat.on("message:text", async (ctx) => {
   });
   await sendShareResult(ctx, result);
 });
+
+// Stream a short-lived rich draft with a <tg-thinking> animation. It's a
+// nice-to-have, so any failure is swallowed and the real reply still follows.
+async function sendThinkingDraft(ctx: AppContext): Promise<void> {
+  try {
+    await ctx.replyWithRichMessageDraft(
+      { html: `<tg-thinking>${THINKING_CAPTION}</tg-thinking>` },
+      { draft_id: ctx.message?.message_id ?? 1 },
+    );
+  } catch (error) {
+    if (!(error instanceof GrammyError)) throw error;
+  }
+}
 
 async function sendShareResult(ctx: AppContext, result: ShareResult): Promise<void> {
   if (result.status === "invalid_url") {
@@ -85,12 +107,22 @@ async function sendShareResult(ctx: AppContext, result: ShareResult): Promise<vo
   const post = result.post;
   const url = result.tweet?.url ?? result.normalizedUrl ?? "";
   const button = originalPostButton(url);
-  const captionGroup = `${post.captionHtml}\n\n${post.linkHtml}`;
+
+  // Prefer a Rich Message: long text (up to ~32k chars, no truncation) plus an
+  // inline media carousel. Fall back to the legacy senders if it's rejected.
+  try {
+    await ctx.replyWithRichMessage(buildRichMessage(post), { reply_markup: button });
+    return;
+  } catch (error) {
+    if (!(error instanceof GrammyError)) throw error;
+
+    console.error("failed to send rich message", error);
+  }
 
   if (post.media.length > 0) {
     await sendMedia(ctx, [...post.media], {
       caption: post.captionHtml,
-      captionGroup,
+      captionGroup: `${post.captionHtml}\n\n${post.linkHtml}`,
       fallbackText: post.html,
       replyMarkup: button,
     });

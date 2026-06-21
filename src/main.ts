@@ -23,7 +23,9 @@ async function main(): Promise<void> {
       method === "editMessageCaption"
     ) {
       const p = payload as Record<string, unknown>;
-      if (p.parse_mode === undefined) p.parse_mode = "HTML";
+      // Rich messages carry their own formatting; parse_mode only applies to
+      // plain text/caption payloads and would be rejected alongside rich_message.
+      if (p.parse_mode === undefined && p.rich_message === undefined) p.parse_mode = "HTML";
     }
     return prev(method, payload, signal);
   });
