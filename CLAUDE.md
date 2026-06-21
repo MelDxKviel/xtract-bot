@@ -45,27 +45,29 @@ CI runs `typecheck`, `lint`, `format:check`, and `test` on every PR.
 
 ### Request Flow
 
-**Private chat**: Update → `sessionMiddleware` (opens Drizzle transaction, builds repos/services, attaches them to the grammY `Context`) → `accessMiddleware` (registers user, enforces whitelist) → composer-bound handler → `tweetShareService` → provider → `tweetCache` repository → formatter → Telegram message. When the message contains a tweet URL, the handler first streams a short-lived animated `<tg-thinking>` placeholder via `replyWithRichMessageDraft` (best-effort; failures are ignored). Rich Message **drafts are private-chat only** (they need a numeric `chat_id`), so inline has no equivalent animation.
+**Private chat**: Update → `sessionMiddleware` (opens Drizzle transaction, builds repos/services, attaches them to the grammY `Context`) → `accessMiddleware` (registers user, enforces whitelist) → `rateLimitMiddleware` (per-user token bucket on fetch actions; admins exempt) → composer-bound handler → `tweetShareService` → provider → `tweetCache` repository → formatter → Telegram message. When the message contains a tweet URL, the handler first streams a short-lived animated `<tg-thinking>` placeholder via `replyWithRichMessageDraft` (best-effort; failures are ignored). Rich Message **drafts are private-chat only** (they need a numeric `chat_id`), so inline has no equivalent animation.
+
+`tweetShareService` also **unrolls threads** (walks up the self-reply chain via `repliedToTweet` / `inReplyToTweetId`, capped by `THREAD_MAX_TWEETS`) and uses a **negative cache** to short-circuit known-deleted/not-found tweets. A multi-tweet thread is rendered by `formatThread`; a single tweet by `formatTweet`. Both feed the same Rich Message / legacy-ladder send path.
 
 **Inline query**: `@bot <url>` → `inline_query` handler immediately responds with a "⏳ Loading…" placeholder (no fetch yet) → user selects result → `chosen_inline_result` handler runs the full share flow and edits the message in-place. Posts with media are edited into a Rich Message carousel (`<tg-slideshow>`) so all media is shown in one message; it falls back to the legacy single-media edit on failure.
 
 ### Key Layers
 
-| Layer        | Path                         | Role                                      |
-| ------------ | ---------------------------- | ----------------------------------------- |
-| Entry point  | `src/main.ts`                | Init DB, bot, provider; start polling     |
-| Dispatcher   | `src/bot/dispatcher.ts`      | Register middlewares and composers        |
-| Handlers     | `src/bot/handlers/`          | `private.ts`, `admin.ts`, `inline.ts`     |
-| Middlewares  | `src/bot/middlewares/`       | `session.ts`, `access.ts`                 |
-| Services     | `src/services/`              | `access`, `stats`, `tweetShare`           |
-| Repositories | `src/repositories/`          | Data access for each Drizzle table        |
-| Providers    | `src/providers/`             | Pluggable tweet fetching strategies       |
-| Formatters   | `src/formatters/telegram.ts` | Convert `TweetData` → HTML `TelegramPost` |
-| Utils        | `src/utils/urls.ts`          | Parse X/Twitter/VxTwitter URLs            |
+| Layer        | Path                         | Role                                         |
+| ------------ | ---------------------------- | -------------------------------------------- |
+| Entry point  | `src/main.ts`                | Init DB, bot, provider; polling/webhook      |
+| Dispatcher   | `src/bot/dispatcher.ts`      | Register middlewares and composers           |
+| Handlers     | `src/bot/handlers/`          | `private.ts`, `admin.ts`, `inline.ts`        |
+| Middlewares  | `src/bot/middlewares/`       | `session.ts`, `access.ts`, `rateLimit.ts`    |
+| Services     | `src/services/`              | `access`, `stats`, `tweetShare`, `rateLimit` |
+| Repositories | `src/repositories/`          | Data access for each Drizzle table           |
+| Providers    | `src/providers/`             | Pluggable tweet fetching strategies          |
+| Formatters   | `src/formatters/telegram.ts` | Convert `TweetData` → HTML `TelegramPost`    |
+| Utils        | `src/utils/urls.ts`          | Parse X/Twitter/VxTwitter URLs               |
 
 ### Middleware & Dependency Injection
 
-Both middlewares run on every update. `sessionMiddleware` runs first: it opens a Drizzle transaction (`db.transaction(...)`), constructs all repositories and services, attaches them to the grammY `Context`, and the transaction commits on success or rolls back if the handler throws. `accessMiddleware` runs second: it reads `ctx.services.access`, upserts the user, then blocks access unless the user is an admin, is whitelisted, or is using a public command (`/start`, `/help`, `/id`).
+`sessionMiddleware` runs first: it opens a Drizzle transaction (`db.transaction(...)`), constructs all repositories and services, attaches them to the grammY `Context`, and the transaction commits on success or rolls back if the handler throws. `accessMiddleware` runs second: it reads `ctx.services.access`, upserts the user, then blocks access unless the user is an admin, is whitelisted, or is using a public command (`/start`, `/help`, `/id`). `rateLimitMiddleware` runs third (only when `RATE_LIMIT_ENABLED`): it consumes a token from an **in-memory** token bucket (created once in `buildBot`, shared across updates — not per-request) for fetch actions only (private text carrying a tweet URL, and `chosen_inline_result`); admins are exempt.
 
 Handlers consume injected services via the typed `AppContext` (e.g. `ctx.services.tweetShare`).
 
@@ -78,16 +80,20 @@ Selected via `TWEET_PROVIDER` env var. All implement `TweetProvider` (`getTweet`
 - `external_http` — delegates to an external HTTP API (requires `TWEET_PROVIDER_BASE_URL`)
 - `x_api` — official X API v2 (requires `X_BEARER_TOKEN`)
 
-`TweetData` and `TweetMedia` are the shared domain types defined in `src/providers/base.ts`. Helper functions `tweetToPayload` / `tweetFromPayload` handle the JSONB serialisation used by the cache.
+`TweetData` and `TweetMedia` are the shared domain types defined in `src/providers/base.ts`. `TweetData` also carries `inReplyToTweetId` (parent status id, used for thread unrolling) and `poll` (a `TweetPoll` of options + vote counts, rendered by `pollHtml`). Helper functions `tweetToPayload` / `tweetFromPayload` handle the JSONB serialisation used by the cache.
 
 ### Database Schema (`src/db/schema.ts`)
 
 - `users` — Telegram user + `is_allowed` whitelist flag
-- `tweet_cache` — JSONB payload with TTL (`expires_at`); keyed by `tweet_id`
+- `tweet_cache` — keyed by `tweet_id` with TTL (`expires_at`). Positive entries hold the JSONB `payload`; **negative** entries (deleted/not-found) have a null `payload` and a non-null `error_code` so providers aren't re-hit. The repository exposes `getEntry` (discriminated `hit`/`negative`), `set`, and `setNegative`.
 - `share_events` — per-share audit log (mode: private/inline, status, error_code)
 - `admin_actions` — admin allow/deny audit log
 
 Migrations live in `drizzle/migrations/*.sql` and are applied by `src/db/migrate.ts`.
+
+### Deployment (`src/main.ts`)
+
+`POLLING_ENABLED=true` (default) runs long polling. Otherwise `main.ts` starts a `Bun.serve` HTTP server and registers the webhook from `WEBHOOK_URL` via grammY's `webhookCallback(bot, "bun", { secretToken })`, listening on `WEBHOOK_PORT` (or `$PORT`) with a `GET /health` route. Both paths track in-flight handlers and drain them on `SIGINT`/`SIGTERM` before closing the provider and DB.
 
 ### Configuration (`src/config.ts`)
 
@@ -102,3 +108,5 @@ The bot installs an API transformer that sets `parse_mode: "HTML"` on `sendMessa
 ### Tests
 
 Tests are plain TS files under `tests/*.test.ts`, using Vitest. Path alias `@/*` resolves to `src/*`. Use simple in-module fakes (e.g. `FakeProvider`, `FakeCache`) rather than mocking frameworks. The `public_embed` test injects a custom `fetch` to replay canned HTTP responses.
+
+Handler tests (`tests/privateHandler.test.ts`, `tests/inlineHandler.test.ts`) drive the **real** grammY composers through `tests/support/botHarness.ts`: it builds a `Bot` with a fake `botInfo` and installs an API transformer that records every call (and can force `GrammyError`s) instead of hitting Telegram, while a middleware injects fake `ctx.services`. This exercises command parsing, filters, and context shortcuts without network. Non-`*.test.ts` files under `tests/` (e.g. `tests/support/`) are helpers, not test suites.

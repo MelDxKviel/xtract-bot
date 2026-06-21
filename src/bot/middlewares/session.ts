@@ -44,6 +44,9 @@ export function sessionMiddleware({
           cacheRepository: repositories.tweetCache,
           shareEventsRepository: repositories.shareEvents,
           cacheTtlSeconds: settings.tweetCacheTtlSeconds,
+          negativeCacheTtlSeconds: settings.negativeCacheTtlSeconds,
+          threadUnrollEnabled: settings.threadUnrollEnabled,
+          threadMaxTweets: settings.threadMaxTweets,
         }),
       };
       await next();

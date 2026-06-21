@@ -1,4 +1,4 @@
-import type { TweetData, TweetMedia } from "@/providers/base";
+import type { TweetData, TweetMedia, TweetPoll } from "@/providers/base";
 
 export const MESSAGE_LIMIT = 4096;
 export const CAPTION_LIMIT = 1024;
@@ -45,8 +45,130 @@ export function formatTweet(tweet: TweetData, options: FormatOptions = {}): Tele
   };
 }
 
+/**
+ * Format an unrolled thread (oldest → newest, all by the same author) into a
+ * single post: one author header, each tweet's text/poll as a numbered segment,
+ * and the media of every tweet merged into one carousel. The shared (last)
+ * tweet supplies the canonical link and media cap.
+ */
+export function formatThread(
+  tweets: readonly TweetData[],
+  options: FormatOptions = {},
+): TelegramPost {
+  if (tweets.length <= 1) {
+    return formatTweet(tweets[0]!, options);
+  }
+  const root = tweets[tweets.length - 1]!;
+  const media = collectThreadMedia(tweets);
+  const linkHtml = originalPostLinkHtml(root.url);
+  const suffixLen = "\n\n".length + linkHtml.length;
+  return {
+    html: renderThreadHtml(tweets, MESSAGE_LIMIT - suffixLen, options),
+    richHtml: renderThreadHtml(tweets, RICH_MESSAGE_LIMIT - suffixLen, { ...options, rich: true }),
+    captionHtml: renderThreadHtml(tweets, CAPTION_LIMIT - suffixLen, options),
+    linkHtml,
+    media: media.slice(0, MAX_MEDIA),
+    extraMediaCount: Math.max(0, media.length - MAX_MEDIA),
+  };
+}
+
 export function originalPostLinkHtml(url: string): string {
   return `<a href="${escapeAttr(url)}">${ORIGINAL_POST_LABEL}</a>`;
+}
+
+function collectThreadMedia(tweets: readonly TweetData[]): TweetMedia[] {
+  const media: TweetMedia[] = [];
+  const seen = new Set<string>();
+  for (const tweet of tweets) {
+    for (const item of tweet.media) {
+      if (seen.has(item.url)) continue;
+      seen.add(item.url);
+      media.push(item);
+    }
+  }
+  return media;
+}
+
+function renderThreadHtml(
+  tweets: readonly TweetData[],
+  limit: number,
+  options: FormatOptions,
+): string {
+  const root = tweets[tweets.length - 1]!;
+  const total = tweets.length;
+  const header = authorHtml(root);
+  const threadNote = `🧵 <i>Тред — ${total} ${pluralPosts(total)}</i>`;
+
+  const footer: string[] = [];
+  const totalMedia = collectThreadMedia(tweets);
+  if (totalMedia.length > MAX_MEDIA) {
+    footer.push(`📎 Показаны первые ${MAX_MEDIA} медиа из ${totalMedia.length}.`);
+  }
+  if (options.originalLanguageLabel) {
+    footer.push(`<i>Язык оригинала: ${escapeHtml(options.originalLanguageLabel)}</i>`);
+  }
+
+  const segCap = options.rich ? 4000 : 800;
+  const segments = tweets.map((tweet, index) => threadSegmentHtml(tweet, index + 1, segCap));
+
+  const assemble = (count: number): string => {
+    const parts: string[] = [header, threadNote];
+    for (let index = 0; index < count; index += 1) {
+      parts.push("", segments[index]!);
+    }
+    if (count < total) {
+      parts.push("", `<i>… ещё ${total - count} ${pluralPosts(total - count)}</i>`);
+    }
+    for (const line of footer) {
+      parts.push("", line);
+    }
+    return parts.join("\n");
+  };
+
+  // Drop trailing segments until the post fits; keep at least the first one.
+  for (let count = total; count >= 1; count -= 1) {
+    const rendered = assemble(count);
+    if (rendered.length <= limit) return rendered;
+  }
+  return `${header}\n${threadNote}\n\n...`;
+}
+
+function threadSegmentHtml(tweet: TweetData, index: number, cap: number): string {
+  const text = (tweet.text ?? "").trim();
+  const lines: string[] = [];
+  lines.push(text ? `${index}. ${linkifyEntities(truncateRaw(text, cap))}` : `${index}.`);
+  if (tweet.poll) {
+    lines.push("", pollHtml(tweet.poll));
+  }
+  return lines.join("\n");
+}
+
+function pluralPosts(count: number): string {
+  const mod100 = Math.abs(count) % 100;
+  const mod10 = mod100 % 10;
+  if (mod100 >= 11 && mod100 <= 14) return "постов";
+  if (mod10 === 1) return "пост";
+  if (mod10 >= 2 && mod10 <= 4) return "поста";
+  return "постов";
+}
+
+export function pollHtml(poll: TweetPoll): string {
+  const sumVotes = poll.options.reduce((sum, option) => sum + Math.max(0, option.votes), 0);
+  const total = poll.totalVotes > 0 ? poll.totalVotes : sumVotes;
+  const lines = ["🗳 <b>Опрос</b>"];
+  for (const option of poll.options) {
+    const percent = total > 0 ? Math.round((option.votes / total) * 100) : 0;
+    lines.push(`▫️ ${escapeHtml(option.label)} — ${percent}% (${formatVotes(option.votes)})`);
+  }
+  const status = poll.closed ? "завершён" : "идёт";
+  lines.push(`<i>Всего голосов: ${formatVotes(total)} · ${status}</i>`);
+  return lines.join("\n");
+}
+
+function formatVotes(votes: number): string {
+  return Math.round(Math.max(0, votes))
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
 export function renderTweetHtml(
@@ -68,6 +190,9 @@ export function renderTweetHtml(
     const parts: string[] = text
       ? [authorHtml(tweet), "", linkifyEntities(text)]
       : [authorHtml(tweet)];
+    if (tweet.poll) {
+      parts.push("", pollHtml(tweet.poll));
+    }
     const related = tweet.quotedTweet ?? tweet.repliedToTweet;
     if (related) {
       parts.push("", relatedBlockHtml(related, tweet.quotedTweet !== null, options.rich ?? false));

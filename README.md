@@ -36,10 +36,15 @@ caches the result in PostgreSQL, and returns a neatly formatted message.
 
 - 🔗 **URL support** for `x.com`, `twitter.com`, `mobile.twitter.com`, `vxtwitter.com`
 - 🧩 **Parses** `/status/<id>` and `/statuses/<id>` paths
+- 🧵 **Thread unrolling** — collects a self-reply chain into a single post
+- 🗳 **Polls** — renders options with vote counts and percentages
 - 🔐 **User whitelist** and administrators via `ADMIN_IDS`
+- 🐢 **Per-user rate limiting** to protect providers from flooding (admins exempt)
 - 💬 **Commands** `/start`, `/help`, `/id`, `/allow`, `/deny`, `/users`, `/stats`, `/health`
 - ⚡ **Inline mode** with an instant "Loading…" response that is then edited in-place
 - 🗄️ **Cache** of successful responses in PostgreSQL with a configurable TTL
+- 🚫 **Negative cache** so deleted/not-found posts don't re-hit providers
+- 🌐 **Polling _or_ webhook** deployment (`POLLING_ENABLED` / `WEBHOOK_URL`)
 - 🐳 **Docker Compose** with PostgreSQL and Drizzle migrations out of the box
 - 🔌 **Multiple providers** to choose from: `fake`, `public_embed`, `external_http`, `x_api`
 
@@ -88,10 +93,43 @@ ADMIN_IDS=123456789,987654321
 ACCESS_WHITELIST_ENABLED=true
 TWEET_PROVIDER=public_embed
 TWEET_CACHE_TTL_SECONDS=86400
+NEGATIVE_CACHE_TTL_SECONDS=600
+THREAD_UNROLL_ENABLED=true
+THREAD_MAX_TWEETS=10
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_MAX_REQUESTS=20
+RATE_LIMIT_WINDOW_SECONDS=60
 TWEET_PROVIDER_TIMEOUT_SECONDS=10
 LOG_LEVEL=INFO
 POLLING_ENABLED=true
 ```
+
+### Feature options
+
+| Variable                     | Default | Description                                                             |
+| ---------------------------- | ------- | ----------------------------------------------------------------------- |
+| `THREAD_UNROLL_ENABLED`      | `true`  | Walk up a same-author reply chain and render it as one post             |
+| `THREAD_MAX_TWEETS`          | `10`    | Maximum tweets collected per thread (including the shared one)          |
+| `NEGATIVE_CACHE_TTL_SECONDS` | `600`   | How long deleted/not-found tweets are remembered to skip provider calls |
+| `RATE_LIMIT_ENABLED`         | `true`  | Throttle per-user tweet fetches (admins are exempt)                     |
+| `RATE_LIMIT_MAX_REQUESTS`    | `20`    | Fetches allowed per window before a user is told to slow down           |
+| `RATE_LIMIT_WINDOW_SECONDS`  | `60`    | Length of the rate-limit window                                         |
+
+### Deployment mode
+
+By default the bot runs in **long polling** (`POLLING_ENABLED=true`). For
+production behind HTTPS you can switch to **webhooks**:
+
+```env
+POLLING_ENABLED=false
+WEBHOOK_URL=https://bot.example.com/telegram
+WEBHOOK_SECRET=a-long-random-string
+WEBHOOK_PORT=8080
+```
+
+The bot serves the webhook with `Bun.serve` on `WEBHOOK_PORT` (or `$PORT`),
+verifies Telegram's `X-Telegram-Bot-Api-Secret-Token` against `WEBHOOK_SECRET`,
+registers the webhook on startup, and exposes `GET /health` for probes.
 
 ### Tweet providers
 

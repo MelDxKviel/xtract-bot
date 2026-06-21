@@ -174,6 +174,36 @@ describe("PublicEmbedTweetProvider", () => {
     expect(tweet.repliedToTweet).not.toBeNull();
     expect(tweet.repliedToTweet!.authorUsername).toBe("original_user");
     expect(tweet.repliedToTweet!.text).toBe("Original tweet text");
+    expect(tweet.inReplyToTweetId).toBe("1000000000000000001");
+  });
+
+  it("parses a poll from fxtwitter", async () => {
+    const handler: Handler = () =>
+      jsonResponse({
+        code: 200,
+        tweet: {
+          id: "5",
+          url: "https://x.com/user/status/5",
+          text: "vote now",
+          author: { screen_name: "user", name: "User" },
+          poll: {
+            choices: [
+              { label: "Yes", count: 3 },
+              { label: "No", count: 7 },
+            ],
+            total_votes: 10,
+            ends_at: "2020-01-01T00:00:00Z",
+          },
+        },
+      });
+    const provider = new PublicEmbedTweetProvider({ fetch: fetchFromHandler(handler) });
+    const tweet = await provider.getTweet("5", "https://x.com/user/status/5");
+    expect(tweet.poll).not.toBeNull();
+    expect(tweet.poll!.options.map((option) => option.label)).toEqual(["Yes", "No"]);
+    expect(tweet.poll!.options[0]!.votes).toBe(3);
+    expect(tweet.poll!.totalVotes).toBe(10);
+    // ends_at is in the past, so the poll is closed.
+    expect(tweet.poll!.closed).toBe(true);
   });
 
   it("fetches replied-to tweet from syndication", async () => {

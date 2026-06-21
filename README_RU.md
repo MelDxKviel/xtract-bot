@@ -36,10 +36,15 @@
 
 - 🔗 **Поддержка ссылок** `x.com`, `twitter.com`, `mobile.twitter.com`, `vxtwitter.com`
 - 🧩 **Парсинг** `/status/<id>` и `/statuses/<id>`
+- 🧵 **Разворот тредов** — собирает цепочку самоответов в один пост
+- 🗳 **Опросы** — варианты с числом голосов и процентами
 - 🔐 **Whitelist пользователей** и администраторы из `ADMIN_IDS`
+- 🐢 **Рейт-лимит на пользователя** для защиты провайдеров от заваливания (админы — без лимита)
 - 💬 **Команды** `/start`, `/help`, `/id`, `/allow`, `/deny`, `/users`, `/stats`, `/health`
 - ⚡ **Inline-режим** с быстрым ответом «Загрузка…» и последующим редактированием
 - 🗄️ **Кеш** успешных ответов в PostgreSQL с настраиваемым TTL
+- 🚫 **Негативный кеш** — удалённые/ненайденные посты не дёргают провайдеров повторно
+- 🌐 **Polling _или_ webhook** (`POLLING_ENABLED` / `WEBHOOK_URL`)
 - 🐳 **Docker Compose** с PostgreSQL и миграциями Drizzle из коробки
 - 🔌 **Несколько провайдеров** на выбор: `fake`, `public_embed`, `external_http`, `x_api`
 
@@ -88,10 +93,43 @@ ADMIN_IDS=123456789,987654321
 ACCESS_WHITELIST_ENABLED=true
 TWEET_PROVIDER=public_embed
 TWEET_CACHE_TTL_SECONDS=86400
+NEGATIVE_CACHE_TTL_SECONDS=600
+THREAD_UNROLL_ENABLED=true
+THREAD_MAX_TWEETS=10
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_MAX_REQUESTS=20
+RATE_LIMIT_WINDOW_SECONDS=60
 TWEET_PROVIDER_TIMEOUT_SECONDS=10
 LOG_LEVEL=INFO
 POLLING_ENABLED=true
 ```
+
+### Параметры функций
+
+| Переменная                   | По умолчанию | Описание                                                                |
+| ---------------------------- | ------------ | ----------------------------------------------------------------------- |
+| `THREAD_UNROLL_ENABLED`      | `true`       | Разворачивать цепочку самоответов в один пост                           |
+| `THREAD_MAX_TWEETS`          | `10`         | Максимум постов в треде (включая исходный)                              |
+| `NEGATIVE_CACHE_TTL_SECONDS` | `600`        | Сколько помнить удалённые/ненайденные посты, чтобы не дёргать провайдер |
+| `RATE_LIMIT_ENABLED`         | `true`       | Ограничивать число запросов на пользователя (админы — без лимита)       |
+| `RATE_LIMIT_MAX_REQUESTS`    | `20`         | Сколько запросов разрешено в окне до сообщения «помедленнее»            |
+| `RATE_LIMIT_WINDOW_SECONDS`  | `60`         | Длина окна рейт-лимита                                                  |
+
+### Режим работы
+
+По умолчанию бот работает в режиме **long polling** (`POLLING_ENABLED=true`).
+Для прода за HTTPS можно переключиться на **webhook**:
+
+```env
+POLLING_ENABLED=false
+WEBHOOK_URL=https://bot.example.com/telegram
+WEBHOOK_SECRET=длинная-случайная-строка
+WEBHOOK_PORT=8080
+```
+
+Бот поднимает webhook через `Bun.serve` на `WEBHOOK_PORT` (или `$PORT`),
+проверяет заголовок Telegram `X-Telegram-Bot-Api-Secret-Token` против
+`WEBHOOK_SECRET`, регистрирует webhook при старте и отдаёт `GET /health`.
 
 ### Провайдеры твитов
 

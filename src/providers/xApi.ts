@@ -3,6 +3,7 @@ import {
   TweetProviderError,
   type TweetData,
   type TweetMedia,
+  type TweetPoll,
   type TweetProvider,
 } from "@/providers/base";
 import { buildUrl, getFetch, withTimeout, type FetchLike } from "@/providers/http";
@@ -27,13 +28,19 @@ interface XApiMedia {
   variants?: Array<{ content_type?: string; bit_rate?: number; url?: string }>;
 }
 
+interface XApiPoll {
+  id: string;
+  options?: Array<{ position?: number; label?: string; votes?: number }>;
+  voting_status?: string;
+}
+
 interface XApiTweet {
   id: string;
   author_id?: string;
   text?: string;
   created_at?: string;
   lang?: string;
-  attachments?: { media_keys?: string[] };
+  attachments?: { media_keys?: string[]; poll_ids?: string[] };
   referenced_tweets?: Array<{ type: string; id: string }>;
 }
 
@@ -43,6 +50,7 @@ interface XApiResponse {
     users?: XApiUser[];
     tweets?: XApiTweet[];
     media?: XApiMedia[];
+    polls?: XApiPoll[];
   };
 }
 
@@ -61,9 +69,10 @@ export class XApiTweetProvider implements TweetProvider {
     const url = buildUrl(BASE_URL + "/", `tweets/${encodeURIComponent(tweetId)}`, {
       "tweet.fields": "attachments,author_id,created_at,lang,referenced_tweets",
       expansions:
-        "author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id",
+        "author_id,attachments.media_keys,attachments.poll_ids,referenced_tweets.id,referenced_tweets.id.author_id",
       "user.fields": "name,username,url",
       "media.fields": "duration_ms,height,preview_image_url,type,url,variants,width",
+      "poll.fields": "options,voting_status",
     });
 
     const { signal, clear } = withTimeout(this.timeoutMs);
@@ -129,6 +138,9 @@ export class XApiTweetProvider implements TweetProvider {
     const mediaByKey = new Map<string, XApiMedia>(
       (includes.media ?? []).map((item) => [item.media_key, item]),
     );
+    const pollsById = new Map<string, XApiPoll>(
+      (includes.polls ?? []).map((item) => [item.id, item]),
+    );
 
     const rootId = String(payload.data.id);
     const build = (tweet: XApiTweet, seen: Set<string>): TweetData => {
@@ -144,10 +156,23 @@ export class XApiTweetProvider implements TweetProvider {
         if (parsed) media.push(parsed);
       }
 
+      let poll: TweetPoll | null = null;
+      for (const pollId of tweet.attachments?.poll_ids ?? []) {
+        const parsed = this.parsePoll(pollsById.get(pollId));
+        if (parsed) {
+          poll = parsed;
+          break;
+        }
+      }
+
       let quotedTweet: TweetData | null = null;
       let repliedToTweet: TweetData | null = null;
+      let inReplyToTweetId: string | null = null;
       for (const ref of tweet.referenced_tweets ?? []) {
         const refId = String(ref.id);
+        if (ref.type === "replied_to") {
+          inReplyToTweetId ??= refId;
+        }
         if (seen.has(refId) || !tweetsById.has(refId)) continue;
         if (ref.type === "quoted" && quotedTweet === null) {
           quotedTweet = build(tweetsById.get(refId)!, new Set(seen));
@@ -168,11 +193,26 @@ export class XApiTweetProvider implements TweetProvider {
         media,
         quotedTweet,
         repliedToTweet,
+        inReplyToTweetId,
+        poll,
         lang: tweet.lang ?? null,
       });
     };
 
     return build(payload.data, new Set());
+  }
+
+  private parsePoll(payload: XApiPoll | undefined): TweetPoll | null {
+    if (!payload || !Array.isArray(payload.options)) return null;
+    const options = [...payload.options]
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+      .map((option) => ({
+        label: String(option.label ?? ""),
+        votes: typeof option.votes === "number" ? option.votes : 0,
+      }));
+    if (options.length === 0) return null;
+    const totalVotes = options.reduce((sum, option) => sum + option.votes, 0);
+    return { options, totalVotes, closed: payload.voting_status === "closed" };
   }
 
   private parseMedia(payload: XApiMedia | undefined): TweetMedia | null {
