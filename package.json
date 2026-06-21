@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
-    "grammy": "^1.42.0",
+    "grammy": "^1.44.0",
     "htmlparser2": "^10.0.0",
     "postgres": "^3.4.9"
   },

@@ -3,6 +3,7 @@ import type { InputMediaPhoto, InputMediaVideo } from "grammy/types";
 
 import { DISABLED_LINK_PREVIEW, originalPostButton } from "@/bot/ui";
 import type { AppContext } from "@/bot/context";
+import { buildRichMessage } from "@/formatters/richMessage";
 import type { TweetMedia } from "@/providers/base";
 import type { ShareResult } from "@/services/tweetShare";
 
@@ -88,6 +89,16 @@ async function sendShareResult(ctx: AppContext, result: ShareResult): Promise<vo
   const captionGroup = `${post.captionHtml}\n\n${post.linkHtml}`;
 
   if (post.media.length > 0) {
+    try {
+      await ctx.replyWithRichMessage(buildRichMessage(post), { reply_markup: button });
+      return;
+    } catch (error) {
+      if (!(error instanceof GrammyError)) throw error;
+
+      console.error("failed to send rich media message", error);
+    }
+
+    // Fall back to album/individual/text sending if rich messages are unavailable.
     await sendMedia(ctx, [...post.media], {
       caption: post.captionHtml,
       captionGroup,

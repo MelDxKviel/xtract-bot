@@ -47,7 +47,7 @@ CI runs `typecheck`, `lint`, `format:check`, and `test` on every PR.
 
 **Private chat**: Update → `sessionMiddleware` (opens Drizzle transaction, builds repos/services, attaches them to the grammY `Context`) → `accessMiddleware` (registers user, enforces whitelist) → composer-bound handler → `tweetShareService` → provider → `tweetCache` repository → formatter → Telegram message.
 
-**Inline query**: `@bot <url>` → `inline_query` handler immediately responds with a "⏳ Loading…" placeholder (no fetch yet) → user selects result → `chosen_inline_result` handler runs the full share flow and edits the message in-place.
+**Inline query**: `@bot <url>` → `inline_query` handler immediately responds with a "⏳ Loading…" placeholder (no fetch yet) → user selects result → `chosen_inline_result` handler runs the full share flow and edits the message in-place. Posts with media are edited into a Rich Message carousel (`<tg-slideshow>`) so all media is shown in one message; it falls back to the legacy single-media edit on failure.
 
 ### Key Layers
 
@@ -95,7 +95,9 @@ Plain `loadSettings(env)` function — no global cache, accepts an env dictionar
 
 ### Media Sending Strategy (private chat)
 
-`src/bot/handlers/private.ts` tries to send media in this fallback order: `replyWithMediaGroup` with direct URLs → `replyWithMediaGroup` with preview thumbnails → individual items one by one → plain text fallback. Each step catches `GrammyError` and falls through. The bot installs an API transformer that sets `parse_mode: "HTML"` on `sendMessage`, `editMessageText`, and `editMessageCaption` unless the caller overrides it.
+`src/bot/handlers/private.ts` first tries `replyWithRichMessage` — a Rich Message (Bot API 9.x) whose body is the tweet text and whose media is a `<tg-slideshow>` carousel (built by `src/formatters/richMessage.ts`). If that throws a `GrammyError`, it falls back to the legacy ladder: `replyWithMediaGroup` with direct URLs → `replyWithMediaGroup` with preview thumbnails → individual items one by one → plain text fallback. Each step catches `GrammyError` and falls through.
+
+The bot installs an API transformer that sets `parse_mode: "HTML"` on `sendMessage`, `editMessageText`, and `editMessageCaption` unless the caller overrides it. Rich Message payloads (which carry a `rich_message` field instead of `text`) are skipped, since `parse_mode` only applies to plain text/caption.
 
 ### Tests
 
