@@ -85,4 +85,13 @@ describe("buildRichMessage", () => {
     const { html } = buildRichMessage(formatTweet(makeTweetData()));
     expect(html).toContain('<a href="https://x.com/user">');
   });
+
+  it("preserves long text beyond the legacy 4096-char limit", () => {
+    const { html } = buildRichMessage(formatTweet(makeTweetData({ text: "слово ".repeat(2000) })));
+    expect(html!.length).toBeGreaterThan(4096);
+  });
+
+  it("disables auto entity detection so Twitter handles aren't mis-linked", () => {
+    expect(buildRichMessage(formatTweet(makeTweetData())).skip_entity_detection).toBe(true);
+  });
 });

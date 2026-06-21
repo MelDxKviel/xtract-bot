@@ -86,22 +86,22 @@ async function sendShareResult(ctx: AppContext, result: ShareResult): Promise<vo
   const post = result.post;
   const url = result.tweet?.url ?? result.normalizedUrl ?? "";
   const button = originalPostButton(url);
-  const captionGroup = `${post.captionHtml}\n\n${post.linkHtml}`;
+
+  // Prefer a Rich Message: long text (up to ~32k chars, no truncation) plus an
+  // inline media carousel. Fall back to the legacy senders if it's rejected.
+  try {
+    await ctx.replyWithRichMessage(buildRichMessage(post), { reply_markup: button });
+    return;
+  } catch (error) {
+    if (!(error instanceof GrammyError)) throw error;
+
+    console.error("failed to send rich message", error);
+  }
 
   if (post.media.length > 0) {
-    try {
-      await ctx.replyWithRichMessage(buildRichMessage(post), { reply_markup: button });
-      return;
-    } catch (error) {
-      if (!(error instanceof GrammyError)) throw error;
-
-      console.error("failed to send rich media message", error);
-    }
-
-    // Fall back to album/individual/text sending if rich messages are unavailable.
     await sendMedia(ctx, [...post.media], {
       caption: post.captionHtml,
-      captionGroup,
+      captionGroup: `${post.captionHtml}\n\n${post.linkHtml}`,
       fallbackText: post.html,
       replyMarkup: button,
     });

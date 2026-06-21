@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { CAPTION_LIMIT, MESSAGE_LIMIT, formatTweet, renderTweetHtml } from "@/formatters/telegram";
+import {
+  CAPTION_LIMIT,
+  MESSAGE_LIMIT,
+  RICH_MESSAGE_LIMIT,
+  formatTweet,
+  renderTweetHtml,
+} from "@/formatters/telegram";
 import { makeTweet, type TweetData } from "@/providers/base";
 
 function makeTweetData(overrides: Partial<TweetData> = {}): TweetData {
@@ -125,6 +131,13 @@ describe("formatTweet", () => {
     expect(post.captionHtml.length).toBeLessThanOrEqual(CAPTION_LIMIT);
     expect(post.media.length).toBe(10);
     expect(post.extraMediaCount).toBe(2);
+  });
+
+  it("keeps long posts in richHtml beyond the plain message limit", () => {
+    const post = formatTweet(makeTweetData({ text: "слово ".repeat(2000) }));
+    expect(post.html.length).toBeLessThanOrEqual(MESSAGE_LIMIT);
+    expect(post.richHtml.length).toBeGreaterThan(MESSAGE_LIMIT);
+    expect(post.richHtml.length).toBeLessThanOrEqual(RICH_MESSAGE_LIMIT);
   });
 
   it("appends italic original-language footer when requested", () => {

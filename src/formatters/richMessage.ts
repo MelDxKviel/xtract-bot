@@ -11,9 +11,15 @@ import type { TweetMedia } from "@/providers/base";
  * photos/videos is shown in a single message instead of just the first one.
  */
 export function buildRichMessage(post: TelegramPost): InputRichMessage {
-  const text = textToRichHtml(post.html);
+  const text = textToRichHtml(post.richHtml);
   const carousel = mediaCarouselHtml(post.media);
-  return { html: carousel ? `${text}\n${carousel}` : text };
+  return {
+    html: carousel ? `${text}\n${carousel}` : text,
+    // The body is already escaped/linked exactly as we want; skip Telegram's
+    // auto-detection so Twitter @mentions and #hashtags aren't turned into
+    // (wrong) Telegram mentions and hashtag searches.
+    skip_entity_detection: true,
+  };
 }
 
 /**

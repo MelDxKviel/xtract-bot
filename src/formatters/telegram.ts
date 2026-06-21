@@ -2,13 +2,19 @@ import type { TweetData, TweetMedia } from "@/providers/base";
 
 export const MESSAGE_LIMIT = 4096;
 export const CAPTION_LIMIT = 1024;
+// Rich messages allow up to 32768 chars; a small margin covers markup and the
+// newline-to-<br> expansion done when rendering the rich message.
+export const RICH_MESSAGE_LIMIT = 32000;
 export const MAX_MEDIA = 10;
 export const ORIGINAL_POST_LABEL = "🔗 Оригинальный пост";
 
 const LEADING_MENTIONS_RE = /^(@[A-Za-z0-9_]{1,50}(?:\s+|$))+/;
 
 export interface TelegramPost {
+  /** Body for a plain message (capped at the 4096-char Telegram limit). */
   html: string;
+  /** Body for a Rich Message (up to ~32k chars, so long posts aren't truncated). */
+  richHtml: string;
   captionHtml: string;
   linkHtml: string;
   media: readonly TweetMedia[];
@@ -25,6 +31,7 @@ export function formatTweet(tweet: TweetData, options: FormatOptions = {}): Tele
   const suffixLen = "\n\n".length + linkHtml.length;
   return {
     html: renderTweetHtml(tweet, MESSAGE_LIMIT - suffixLen, options),
+    richHtml: renderTweetHtml(tweet, RICH_MESSAGE_LIMIT - suffixLen, options),
     captionHtml: renderTweetHtml(tweet, CAPTION_LIMIT - suffixLen, options),
     linkHtml,
     media,

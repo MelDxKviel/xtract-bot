@@ -144,20 +144,16 @@ inlineComposer.on("chosen_inline_result", async (ctx) => {
     }
   }
 
-  if (post.media.length > 0) {
-    await safeEditRichMedia(ctx, inlineMessageId, post, button);
-    return;
-  }
-
-  await safeEditText(ctx, inlineMessageId, post.html, button);
+  await safeEditRich(ctx, inlineMessageId, post, button);
 });
 
-async function safeEditRichMedia(
+async function safeEditRich(
   ctx: AppContext,
   inlineMessageId: string,
   post: TelegramPost,
   replyMarkup: InlineKeyboard,
 ): Promise<void> {
+  // Edit the placeholder into a Rich Message: long text plus a media carousel.
   try {
     await ctx.api.editMessageTextInline(inlineMessageId, buildRichMessage(post), {
       reply_markup: replyMarkup,
@@ -166,11 +162,16 @@ async function safeEditRichMedia(
   } catch (error) {
     if (!(error instanceof GrammyError)) throw error;
 
-    console.error("failed to edit inline rich media", error);
+    console.error("failed to edit inline rich message", error);
   }
 
-  // Fall back to the legacy single-media edit if rich messages are unavailable.
-  await safeEditMedia(ctx, inlineMessageId, post.media[0]!, post.captionHtml, replyMarkup);
+  // Fall back to the legacy single-media / text edit if rich messages are unavailable.
+  if (post.media.length > 0) {
+    await safeEditMedia(ctx, inlineMessageId, post.media[0]!, post.captionHtml, replyMarkup);
+    return;
+  }
+
+  await safeEditText(ctx, inlineMessageId, post.html, replyMarkup);
 }
 
 async function safeEditText(
