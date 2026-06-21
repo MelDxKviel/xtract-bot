@@ -45,7 +45,7 @@ CI runs `typecheck`, `lint`, `format:check`, and `test` on every PR.
 
 ### Request Flow
 
-**Private chat**: Update → `sessionMiddleware` (opens Drizzle transaction, builds repos/services, attaches them to the grammY `Context`) → `accessMiddleware` (registers user, enforces whitelist) → composer-bound handler → `tweetShareService` → provider → `tweetCache` repository → formatter → Telegram message.
+**Private chat**: Update → `sessionMiddleware` (opens Drizzle transaction, builds repos/services, attaches them to the grammY `Context`) → `accessMiddleware` (registers user, enforces whitelist) → composer-bound handler → `tweetShareService` → provider → `tweetCache` repository → formatter → Telegram message. When the message contains a tweet URL, the handler first streams a short-lived animated `<tg-thinking>` placeholder via `replyWithRichMessageDraft` (best-effort; failures are ignored). Rich Message **drafts are private-chat only** (they need a numeric `chat_id`), so inline has no equivalent animation.
 
 **Inline query**: `@bot <url>` → `inline_query` handler immediately responds with a "⏳ Loading…" placeholder (no fetch yet) → user selects result → `chosen_inline_result` handler runs the full share flow and edits the message in-place. Posts with media are edited into a Rich Message carousel (`<tg-slideshow>`) so all media is shown in one message; it falls back to the legacy single-media edit on failure.
 
