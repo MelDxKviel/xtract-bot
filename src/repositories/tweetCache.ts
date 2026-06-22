@@ -1,4 +1,4 @@
-import { eq, sql as drizzleSql } from "drizzle-orm";
+import { and, eq, isNotNull, lte, sql as drizzleSql } from "drizzle-orm";
 
 import type { DatabaseTx } from "@/db/client";
 import { tweetCache } from "@/db/schema";
@@ -22,6 +22,12 @@ export interface TweetCacheRepository {
     errorCode: string,
     options: { ttlSeconds: number },
   ): Promise<void>;
+  /** Number of rows currently in the cache (positive + negative entries). */
+  count(): Promise<number>;
+  /** Delete every cache row. Returns how many rows were removed. */
+  clearAll(): Promise<number>;
+  /** Delete rows whose TTL has elapsed. Returns how many rows were removed. */
+  clearExpired(now?: Date): Promise<number>;
 }
 
 function expiry(ttlSeconds: number): Date | null {
@@ -78,6 +84,24 @@ export function createTweetCacheRepository(tx: DatabaseTx): TweetCacheRepository
             updatedAt: drizzleSql`now()`,
           },
         });
+    },
+
+    async count(): Promise<number> {
+      const rows = await tx.select({ count: drizzleSql<number>`count(*)::int` }).from(tweetCache);
+      return rows[0]?.count ?? 0;
+    },
+
+    async clearAll(): Promise<number> {
+      const deleted = await tx.delete(tweetCache).returning({ id: tweetCache.id });
+      return deleted.length;
+    },
+
+    async clearExpired(now = new Date()): Promise<number> {
+      const deleted = await tx
+        .delete(tweetCache)
+        .where(and(isNotNull(tweetCache.expiresAt), lte(tweetCache.expiresAt, now)))
+        .returning({ id: tweetCache.id });
+      return deleted.length;
     },
   };
 }

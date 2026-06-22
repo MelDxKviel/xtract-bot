@@ -11,6 +11,8 @@ describe("loadSettings new options", () => {
   it("applies defaults", () => {
     const settings = loadSettings({ ...BASE });
     expect(settings.negativeCacheTtlSeconds).toBe(600);
+    expect(settings.cacheCleanupEnabled).toBe(true);
+    expect(settings.cacheCleanupIntervalSeconds).toBe(3600);
     expect(settings.threadUnrollEnabled).toBe(true);
     expect(settings.threadMaxTweets).toBe(10);
     expect(settings.rateLimitEnabled).toBe(true);
@@ -23,6 +25,8 @@ describe("loadSettings new options", () => {
     const settings = loadSettings({
       ...BASE,
       NEGATIVE_CACHE_TTL_SECONDS: "30",
+      CACHE_CLEANUP_ENABLED: "off",
+      CACHE_CLEANUP_INTERVAL_SECONDS: "120",
       THREAD_UNROLL_ENABLED: "false",
       THREAD_MAX_TWEETS: "5",
       RATE_LIMIT_ENABLED: "off",
@@ -31,6 +35,8 @@ describe("loadSettings new options", () => {
       WEBHOOK_PORT: "9000",
     });
     expect(settings.negativeCacheTtlSeconds).toBe(30);
+    expect(settings.cacheCleanupEnabled).toBe(false);
+    expect(settings.cacheCleanupIntervalSeconds).toBe(120);
     expect(settings.threadUnrollEnabled).toBe(false);
     expect(settings.threadMaxTweets).toBe(5);
     expect(settings.rateLimitEnabled).toBe(false);
@@ -55,5 +61,11 @@ describe("loadSettings new options", () => {
     expect(settings.threadMaxTweets).toBe(1);
     expect(settings.rateLimitMaxRequests).toBe(1);
     expect(settings.rateLimitWindowSeconds).toBe(1);
+  });
+
+  it("clamps the cache cleanup interval to a 60s floor", () => {
+    expect(
+      loadSettings({ ...BASE, CACHE_CLEANUP_INTERVAL_SECONDS: "5" }).cacheCleanupIntervalSeconds,
+    ).toBe(60);
   });
 });

@@ -9,6 +9,8 @@ export interface Settings {
   tweetProvider: TweetProviderName;
   tweetCacheTtlSeconds: number;
   negativeCacheTtlSeconds: number;
+  cacheCleanupEnabled: boolean;
+  cacheCleanupIntervalSeconds: number;
   threadUnrollEnabled: boolean;
   threadMaxTweets: number;
   rateLimitEnabled: boolean;
@@ -50,6 +52,11 @@ export function loadSettings(env: Record<string, string | undefined> = process.e
     tweetProvider: provider,
     tweetCacheTtlSeconds: parseInt(env["TWEET_CACHE_TTL_SECONDS"], 86_400),
     negativeCacheTtlSeconds: parseInt(env["NEGATIVE_CACHE_TTL_SECONDS"], 600),
+    cacheCleanupEnabled: parseBool(env["CACHE_CLEANUP_ENABLED"], true),
+    cacheCleanupIntervalSeconds: Math.max(
+      60,
+      parseInt(env["CACHE_CLEANUP_INTERVAL_SECONDS"], 3600),
+    ),
     threadUnrollEnabled: parseBool(env["THREAD_UNROLL_ENABLED"], true),
     threadMaxTweets: Math.max(1, parseInt(env["THREAD_MAX_TWEETS"], 10)),
     rateLimitEnabled: parseBool(env["RATE_LIMIT_ENABLED"], true),
