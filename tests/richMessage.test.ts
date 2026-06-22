@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatTweet } from "@/formatters/telegram";
+import { formatThread, formatTweet } from "@/formatters/telegram";
 import { buildRichMessage, mediaCarouselHtml } from "@/formatters/richMessage";
 import { makeMedia, makeTweet, type TweetData, type TweetMedia } from "@/providers/base";
 
@@ -93,5 +93,49 @@ describe("buildRichMessage", () => {
 
   it("disables auto entity detection so Twitter handles aren't mis-linked", () => {
     expect(buildRichMessage(formatTweet(makeTweetData())).skip_entity_detection).toBe(true);
+  });
+});
+
+describe("buildRichMessage threads", () => {
+  function threadTweet(id: string, text: string, media: TweetMedia[] = []): TweetData {
+    return makeTweetData({ tweetId: id, url: `https://x.com/user/status/${id}`, text, media });
+  }
+
+  it("interleaves each post's media right after its own text", () => {
+    const post = formatThread([
+      threadTweet("1", "first post", [photo("https://pbs.twimg.com/1.jpg")]),
+      threadTweet("2", "second post", [photo("https://pbs.twimg.com/2.jpg")]),
+    ]);
+    const { html } = buildRichMessage(post);
+    const text1 = html!.indexOf("first post");
+    const img1 = html!.indexOf("https://pbs.twimg.com/1.jpg");
+    const text2 = html!.indexOf("second post");
+    const img2 = html!.indexOf("https://pbs.twimg.com/2.jpg");
+    // Order: text1 → its photo → text2 → its photo.
+    expect(text1).toBeGreaterThanOrEqual(0);
+    expect(img1).toBeGreaterThan(text1);
+    expect(text2).toBeGreaterThan(img1);
+    expect(img2).toBeGreaterThan(text2);
+  });
+
+  it("chains posts with <hr/> dividers and no numbering", () => {
+    const { html } = buildRichMessage(
+      formatThread([
+        threadTweet("1", "alpha"),
+        threadTweet("2", "beta"),
+        threadTweet("3", "gamma"),
+      ]),
+    );
+    expect(html).toContain("<hr/>");
+    expect(html).not.toContain("1. alpha");
+    expect(html).toContain("🧵");
+  });
+
+  it("keeps a long thread in one rich message instead of truncating", () => {
+    const tweets = Array.from({ length: 6 }, (_, index) =>
+      threadTweet(String(index + 1), `post ${"слово ".repeat(300)}`),
+    );
+    const { html } = buildRichMessage(formatThread(tweets));
+    expect(html!.length).toBeGreaterThan(4096);
   });
 });

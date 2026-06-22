@@ -1,10 +1,14 @@
+import { webhookCallback, type Bot } from "grammy";
+
 import { registerBotCommands } from "@/bot/commands";
 import { buildBot } from "@/bot/dispatcher";
-import { loadSettings } from "@/config";
+import { loadSettings, type Settings } from "@/config";
 import { closeDatabase, createDatabase } from "@/db/client";
 import { configureLogging, log } from "@/logging";
 import { createTweetProvider } from "@/providers/factory";
 import { createTranslator } from "@/services/translation";
+
+import type { AppContext } from "@/bot/context";
 
 async function main(): Promise<void> {
   const settings = loadSettings();
@@ -30,10 +34,6 @@ async function main(): Promise<void> {
     return prev(method, payload, signal);
   });
 
-  if (!settings.pollingEnabled) {
-    throw new Error("Webhook mode is not implemented in MVP. Set POLLING_ENABLED=true.");
-  }
-
   // Track in-flight handler invocations so shutdown can wait for them.
   // grammY's `bot.stop()` does not wait for the middleware stack to finish,
   // and closing the DB or provider while a transaction is still running would
@@ -49,6 +49,35 @@ async function main(): Promise<void> {
     }
   });
 
+  const drainAndClose = async (): Promise<void> => {
+    log.info("draining in-flight handlers");
+    await Promise.allSettled(inFlight);
+    try {
+      await provider.close();
+    } catch (error) {
+      log.error("error closing provider", error);
+    }
+    try {
+      await closeDatabase(dbHandle);
+    } catch (error) {
+      log.error("error closing database", error);
+    }
+  };
+
+  try {
+    await registerBotCommands(bot, settings);
+  } catch (error) {
+    log.error("failed to register bot commands", error);
+  }
+
+  if (settings.pollingEnabled) {
+    await runPolling(bot, drainAndClose);
+  } else {
+    await runWebhook(bot, settings, drainAndClose);
+  }
+}
+
+async function runPolling(bot: Bot<AppContext>, drainAndClose: () => Promise<void>): Promise<void> {
   const stopBot = async (): Promise<void> => {
     try {
       await bot.stop();
@@ -63,25 +92,70 @@ async function main(): Promise<void> {
   log.info("starting bot in polling mode");
   await bot.api.deleteWebhook({ drop_pending_updates: true });
   try {
-    await registerBotCommands(bot, settings);
-  } catch (error) {
-    log.error("failed to register bot commands", error);
-  }
-  try {
     await bot.start({ onStart: () => log.info("bot is running") });
   } finally {
-    log.info("draining in-flight handlers");
-    await Promise.allSettled(inFlight);
-    try {
-      await provider.close();
-    } catch (error) {
-      log.error("error closing provider", error);
-    }
-    try {
-      await closeDatabase(dbHandle);
-    } catch (error) {
-      log.error("error closing database", error);
-    }
+    await drainAndClose();
+  }
+}
+
+async function runWebhook(
+  bot: Bot<AppContext>,
+  settings: Settings,
+  drainAndClose: () => Promise<void>,
+): Promise<void> {
+  if (!settings.webhookUrl) {
+    throw new Error("WEBHOOK_URL is required when POLLING_ENABLED=false");
+  }
+
+  // grammY needs bot.botInfo before it can dispatch updates; polling does this
+  // inside bot.start(), but the webhook path must initialise explicitly.
+  await bot.init();
+
+  const expectedPath = webhookPath(settings.webhookUrl);
+  const handleUpdate = webhookCallback(bot, "bun", {
+    secretToken: settings.webhookSecret ?? undefined,
+  });
+
+  const server = Bun.serve({
+    port: settings.webhookPort,
+    fetch: (request) => {
+      const url = new URL(request.url);
+      if (request.method === "POST" && url.pathname === expectedPath) {
+        return handleUpdate(request);
+      }
+      if (request.method === "GET" && url.pathname === "/health") {
+        return new Response("ok");
+      }
+      return new Response("not found", { status: 404 });
+    },
+  });
+
+  await bot.api.setWebhook(settings.webhookUrl, {
+    secret_token: settings.webhookSecret ?? undefined,
+    drop_pending_updates: true,
+  });
+  log.info(`bot is running (webhook on :${settings.webhookPort}${expectedPath})`);
+
+  try {
+    await new Promise<void>((resolve) => {
+      process.once("SIGINT", () => resolve());
+      process.once("SIGTERM", () => resolve());
+    });
+  } finally {
+    log.info("stopping webhook server");
+    // Graceful stop: let in-flight webhook requests (and their DB transactions)
+    // finish before we tear down the provider and database.
+    await server.stop();
+    await drainAndClose();
+  }
+}
+
+function webhookPath(webhookUrl: string): string {
+  try {
+    const path = new URL(webhookUrl).pathname;
+    return path.length > 0 ? path : "/";
+  } catch {
+    return "/";
   }
 }
 

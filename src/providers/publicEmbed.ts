@@ -5,6 +5,8 @@ import {
   TweetProviderError,
   type TweetData,
   type TweetMedia,
+  type TweetPoll,
+  type TweetPollOption,
   type TweetProvider,
 } from "@/providers/base";
 import { buildUrl, getFetch, withTimeout, type FetchLike } from "@/providers/http";
@@ -311,6 +313,7 @@ function tweetFromPublicApi(
     }
   }
 
+  const repliedToId = repliedToIdFromPublicApi(data);
   return makeTweet({
     tweetId,
     url: tweetUrl,
@@ -321,8 +324,37 @@ function tweetFromPublicApi(
     createdAt: publicApiDatetime(data),
     media: mediaFromPublicApi(data),
     quotedTweet,
+    inReplyToTweetId: repliedToId && repliedToId !== tweetId ? repliedToId : null,
+    poll: pollFromPublicApi(data),
     lang: typeof data.lang === "string" ? data.lang : null,
   });
+}
+
+function pollFromPublicApi(data: Record<string, any>): TweetPoll | null {
+  const poll = data.poll;
+  if (!isRecord(poll)) return null;
+  const rawChoices = poll.choices;
+  if (!Array.isArray(rawChoices)) return null;
+  const options: TweetPollOption[] = [];
+  for (const choice of rawChoices) {
+    if (!isRecord(choice)) continue;
+    const label = firstStr(choice, "label", "text", "name");
+    if (label === null) continue;
+    options.push({ label, votes: intOrNull(choice.count ?? choice.votes) ?? 0 });
+  }
+  if (options.length === 0) return null;
+  const totalVotes =
+    intOrNull(poll.total_votes ?? poll.totalVotes) ??
+    options.reduce((sum, option) => sum + option.votes, 0);
+  const closed = pollClosedFlag(poll);
+  return { options, totalVotes, closed };
+}
+
+function pollClosedFlag(poll: Record<string, any>): boolean {
+  if (typeof poll.closed === "boolean") return poll.closed;
+  const endDate = parseDatetime(poll.ends_at ?? poll.endsAt ?? poll.end_datetime);
+  if (endDate !== null) return endDate.getTime() <= Date.now();
+  return false;
 }
 
 function raiseForPublicApiError(payload: Record<string, any>): void {
@@ -520,6 +552,7 @@ function tweetFromSyndication(
     }
   }
 
+  const repliedToId = firstStr(payload, "in_reply_to_status_id_str", "in_reply_to_status_id");
   return makeTweet({
     tweetId,
     url: canonicalTweetUrl(username, tweetId, sourceUrl),
@@ -530,8 +563,42 @@ function tweetFromSyndication(
     createdAt: parseDatetime(payload.created_at),
     media: mediaFromSyndication(payload),
     quotedTweet,
+    inReplyToTweetId: repliedToId && repliedToId !== tweetId ? repliedToId : null,
+    poll: pollFromSyndication(payload),
     lang: typeof payload.lang === "string" ? payload.lang : null,
   });
+}
+
+// Syndication encodes polls inside a card's binding_values: choiceN_label /
+// choiceN_count entries plus a counts_are_final flag. Parse them best-effort.
+function pollFromSyndication(payload: Record<string, any>): TweetPoll | null {
+  const card = payload.card;
+  if (!isRecord(card)) return null;
+  const name = String(card.name ?? "");
+  if (!name.includes("poll")) return null;
+  const bindings = card.binding_values;
+  if (!isRecord(bindings)) return null;
+
+  const options: TweetPollOption[] = [];
+  for (let index = 1; index <= 4; index += 1) {
+    const label = bindingString(bindings[`choice${index}_label`]);
+    if (label === null) break;
+    const count = bindingString(bindings[`choice${index}_count`]);
+    options.push({ label, votes: intOrNull(count) ?? 0 });
+  }
+  if (options.length === 0) return null;
+
+  const closed = bindingString(bindings.counts_are_final) === "true";
+  const totalVotes = options.reduce((sum, option) => sum + option.votes, 0);
+  return { options, totalVotes, closed };
+}
+
+function bindingString(value: unknown): string | null {
+  if (!isRecord(value)) return null;
+  const raw = value.string_value ?? value.boolean_value;
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "boolean") return raw ? "true" : "false";
+  return null;
 }
 
 function textFromSyndication(payload: Record<string, any>): string | null {

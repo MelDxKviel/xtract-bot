@@ -12,6 +12,7 @@ import {
   INLINE_THUMBNAIL_INVALID,
   INLINE_THUMBNAIL_SHARE,
   INLINE_THUMBNAIL_SIZE,
+  INLINE_THUMBNAIL_THREAD,
   INLINE_THUMBNAIL_TRANSLATE_RU,
   originalPostButton,
 } from "@/bot/ui";
@@ -21,6 +22,8 @@ import type { TweetMedia } from "@/providers/base";
 import { languageNameInRussian, translateTweet, TranslationError } from "@/services/translation";
 import { extractFirstTweetUrl } from "@/utils/urls";
 
+// Result-id prefixes; order matters when matching since they share a stem.
+const THREAD_ID_PREFIX = "tweet-thread-";
 const TRANSLATED_ID_PREFIX = "tweet-ru-";
 const DEFAULT_ID_PREFIX = "tweet-";
 
@@ -68,6 +71,25 @@ inlineComposer.on("inline_query", async (ctx) => {
     },
   ];
 
+  // Offer unrolling the whole thread as a separate result (the user picks).
+  if (ctx.settings.threadUnrollEnabled) {
+    results.push({
+      type: "article",
+      id: `${THREAD_ID_PREFIX}${parsed.tweetId}`,
+      title: "🧵 Поделиться тредом",
+      description: "Развернуть весь тред",
+      thumbnail_url: INLINE_THUMBNAIL_THREAD,
+      thumbnail_width: INLINE_THUMBNAIL_SIZE,
+      thumbnail_height: INLINE_THUMBNAIL_SIZE,
+      input_message_content: {
+        message_text: "⏳ Загрузка треда...",
+        parse_mode: "HTML",
+        link_preview_options: DISABLED_LINK_PREVIEW,
+      },
+      reply_markup: originalPostButton(parsed.normalizedUrl),
+    });
+  }
+
   if (ctx.runtimeConfig.russianTranslationEnabled) {
     results.push({
       type: "article",
@@ -94,8 +116,11 @@ inlineComposer.on("chosen_inline_result", async (ctx) => {
   if (!inlineMessageId) return;
 
   const resultId = ctx.chosenInlineResult.result_id;
+  const shareThread = resultId.startsWith(THREAD_ID_PREFIX);
   const translateToRussian =
-    resultId.startsWith(TRANSLATED_ID_PREFIX) && ctx.runtimeConfig.russianTranslationEnabled;
+    !shareThread &&
+    resultId.startsWith(TRANSLATED_ID_PREFIX) &&
+    ctx.runtimeConfig.russianTranslationEnabled;
 
   const parsed = extractFirstTweetUrl(ctx.chosenInlineResult.query ?? "");
   if (parsed === null) {
@@ -107,6 +132,8 @@ inlineComposer.on("chosen_inline_result", async (ctx) => {
     telegramUserId: ctx.chosenInlineResult.from.id,
     chatId: null,
     mode: "inline",
+    // Only the "thread" result unrolls; the plain/translate results stay single.
+    unrollThread: shareThread,
   });
   if (!share.ok || share.post === null) {
     await safeEditText(

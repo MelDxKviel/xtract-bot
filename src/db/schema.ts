@@ -38,7 +38,10 @@ export const tweetCache = pgTable("tweet_cache", {
   id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
   tweetId: text("tweet_id").notNull().unique(),
   sourceUrl: text("source_url").notNull(),
-  payload: jsonb("payload").$type<TweetDataPayload>().notNull(),
+  // Null for negative cache entries (deleted/not-found tweets), which instead
+  // carry an `errorCode` so we don't re-hit providers for known-bad tweets.
+  payload: jsonb("payload").$type<TweetDataPayload>(),
+  errorCode: text("error_code"),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

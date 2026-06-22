@@ -8,11 +8,18 @@ export interface Settings {
   russianTranslationEnabled: boolean;
   tweetProvider: TweetProviderName;
   tweetCacheTtlSeconds: number;
+  negativeCacheTtlSeconds: number;
+  threadUnrollEnabled: boolean;
+  threadMaxTweets: number;
+  rateLimitEnabled: boolean;
+  rateLimitMaxRequests: number;
+  rateLimitWindowSeconds: number;
   tweetProviderTimeoutSeconds: number;
   translationTimeoutSeconds: number;
   logLevel: string;
   webhookUrl: string | null;
   webhookSecret: string | null;
+  webhookPort: number;
   pollingEnabled: boolean;
   tweetProviderBaseUrl: string | null;
   tweetProviderApiKey: string | null;
@@ -42,11 +49,18 @@ export function loadSettings(env: Record<string, string | undefined> = process.e
     russianTranslationEnabled: parseBool(env["RUSSIAN_TRANSLATION_ENABLED"], false),
     tweetProvider: provider,
     tweetCacheTtlSeconds: parseInt(env["TWEET_CACHE_TTL_SECONDS"], 86_400),
+    negativeCacheTtlSeconds: parseInt(env["NEGATIVE_CACHE_TTL_SECONDS"], 600),
+    threadUnrollEnabled: parseBool(env["THREAD_UNROLL_ENABLED"], true),
+    threadMaxTweets: Math.max(1, parseInt(env["THREAD_MAX_TWEETS"], 10)),
+    rateLimitEnabled: parseBool(env["RATE_LIMIT_ENABLED"], true),
+    rateLimitMaxRequests: Math.max(1, parseInt(env["RATE_LIMIT_MAX_REQUESTS"], 20)),
+    rateLimitWindowSeconds: Math.max(1, parseFloat(env["RATE_LIMIT_WINDOW_SECONDS"], 60)),
     tweetProviderTimeoutSeconds: parseFloat(env["TWEET_PROVIDER_TIMEOUT_SECONDS"], 10),
     translationTimeoutSeconds: parseFloat(env["TRANSLATION_TIMEOUT_SECONDS"], 8),
     logLevel: env["LOG_LEVEL"] ?? "INFO",
     webhookUrl: nonEmpty(env["WEBHOOK_URL"]),
     webhookSecret: nonEmpty(env["WEBHOOK_SECRET"]),
+    webhookPort: Math.max(1, parseInt(env["WEBHOOK_PORT"] ?? env["PORT"], 8080)),
     pollingEnabled: parseBool(env["POLLING_ENABLED"], true),
     tweetProviderBaseUrl: nonEmpty(env["TWEET_PROVIDER_BASE_URL"]),
     tweetProviderApiKey: nonEmpty(env["TWEET_PROVIDER_API_KEY"]),

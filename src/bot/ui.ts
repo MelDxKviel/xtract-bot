@@ -12,5 +12,6 @@ const TWEMOJI_BASE = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/
 
 export const INLINE_THUMBNAIL_SIZE = 72;
 export const INLINE_THUMBNAIL_SHARE = `${TWEMOJI_BASE}/1f4e4.png`;
+export const INLINE_THUMBNAIL_THREAD = `${TWEMOJI_BASE}/1f9f5.png`;
 export const INLINE_THUMBNAIL_TRANSLATE_RU = `${TWEMOJI_BASE}/1f1f7-1f1fa.png`;
 export const INLINE_THUMBNAIL_INVALID = `${TWEMOJI_BASE}/1f517.png`;

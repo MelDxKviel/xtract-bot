@@ -19,6 +19,17 @@ export interface TweetMedia {
   durationMs: number | null;
 }
 
+export interface TweetPollOption {
+  label: string;
+  votes: number;
+}
+
+export interface TweetPoll {
+  options: TweetPollOption[];
+  totalVotes: number;
+  closed: boolean;
+}
+
 export interface TweetData {
   tweetId: string;
   url: string;
@@ -30,6 +41,9 @@ export interface TweetData {
   media: TweetMedia[];
   quotedTweet: TweetData | null;
   repliedToTweet: TweetData | null;
+  /** Parent status id when this tweet is a reply, used to unroll threads. */
+  inReplyToTweetId: string | null;
+  poll: TweetPoll | null;
   lang: string | null;
 }
 
@@ -67,6 +81,8 @@ export function makeTweet(
     media: partial.media ?? [],
     quotedTweet: partial.quotedTweet ?? null,
     repliedToTweet: partial.repliedToTweet ?? null,
+    inReplyToTweetId: partial.inReplyToTweetId ?? null,
+    poll: partial.poll ?? null,
     lang: partial.lang ?? null,
   };
 }
@@ -80,6 +96,12 @@ export interface TweetMediaPayload {
   duration_ms: number | null;
 }
 
+export interface TweetPollPayload {
+  options: TweetPollOption[];
+  total_votes: number;
+  closed: boolean;
+}
+
 export interface TweetDataPayload {
   tweet_id: string;
   url: string;
@@ -91,6 +113,8 @@ export interface TweetDataPayload {
   media: TweetMediaPayload[];
   quoted_tweet: TweetDataPayload | null;
   replied_to_tweet: TweetDataPayload | null;
+  in_reply_to_tweet_id: string | null;
+  poll: TweetPollPayload | null;
   lang: string | null;
 }
 
@@ -132,6 +156,8 @@ export function tweetToPayload(tweet: TweetData): TweetDataPayload {
     media: tweet.media.map(mediaToPayload),
     quoted_tweet: tweet.quotedTweet ? tweetToPayload(tweet.quotedTweet) : null,
     replied_to_tweet: tweet.repliedToTweet ? tweetToPayload(tweet.repliedToTweet) : null,
+    in_reply_to_tweet_id: tweet.inReplyToTweetId,
+    poll: tweet.poll ? pollToPayload(tweet.poll) : null,
     lang: tweet.lang,
   };
 }
@@ -148,7 +174,29 @@ export function tweetFromPayload(payload: TweetDataPayload): TweetData {
     media: (payload.media ?? []).map(mediaFromPayload),
     quotedTweet: payload.quoted_tweet ? tweetFromPayload(payload.quoted_tweet) : null,
     repliedToTweet: payload.replied_to_tweet ? tweetFromPayload(payload.replied_to_tweet) : null,
+    inReplyToTweetId: payload.in_reply_to_tweet_id ?? null,
+    poll: payload.poll ? pollFromPayload(payload.poll) : null,
     lang: payload.lang ?? null,
+  };
+}
+
+function pollToPayload(poll: TweetPoll): TweetPollPayload {
+  return {
+    options: poll.options.map((option) => ({ label: option.label, votes: option.votes })),
+    total_votes: poll.totalVotes,
+    closed: poll.closed,
+  };
+}
+
+function pollFromPayload(payload: TweetPollPayload): TweetPoll {
+  const options = (payload.options ?? []).map((option) => ({
+    label: String(option.label ?? ""),
+    votes: Number.isFinite(option.votes) ? Number(option.votes) : 0,
+  }));
+  return {
+    options,
+    totalVotes: Number.isFinite(payload.total_votes) ? Number(payload.total_votes) : 0,
+    closed: Boolean(payload.closed),
   };
 }
 

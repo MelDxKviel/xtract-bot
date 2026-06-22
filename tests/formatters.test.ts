@@ -4,11 +4,14 @@ import {
   CAPTION_LIMIT,
   MESSAGE_LIMIT,
   RICH_MESSAGE_LIMIT,
+  formatThread,
   formatTweet,
   linkifyEntities,
+  pollHtml,
+  richPollHtml,
   renderTweetHtml,
 } from "@/formatters/telegram";
-import { makeTweet, type TweetData } from "@/providers/base";
+import { makeMedia, makeTweet, type TweetData, type TweetMedia } from "@/providers/base";
 
 function makeTweetData(overrides: Partial<TweetData> = {}): TweetData {
   return makeTweet({
@@ -184,6 +187,193 @@ describe("linkifyEntities", () => {
     expect(linkifyEntities("see (https://t.co/abc).")).toContain(
       '<a href="https://t.co/abc">https://t.co/abc</a>',
     );
+  });
+});
+
+describe("pollHtml", () => {
+  it("renders options with percentages and totals", () => {
+    const html = pollHtml({
+      options: [
+        { label: "Yes", votes: 30 },
+        { label: "No", votes: 70 },
+      ],
+      totalVotes: 100,
+      closed: false,
+    });
+    expect(html).toContain("🗳");
+    expect(html).toContain("Yes — 30% (30)");
+    expect(html).toContain("No — 70% (70)");
+    expect(html).toContain("Всего голосов: 100");
+    expect(html).toContain("идёт");
+  });
+
+  it("escapes labels and marks closed polls", () => {
+    const html = pollHtml({ options: [{ label: "<b>x", votes: 1 }], totalVotes: 1, closed: true });
+    expect(html).toContain("&lt;b&gt;x");
+    expect(html).toContain("завершён");
+  });
+
+  it("groups large vote counts and tolerates a zero total", () => {
+    const html = pollHtml({ options: [{ label: "A", votes: 0 }], totalVotes: 0, closed: false });
+    expect(html).toContain("A — 0% (0)");
+    const big = pollHtml({
+      options: [{ label: "A", votes: 1234 }],
+      totalVotes: 1234,
+      closed: false,
+    });
+    expect(big).toContain("1 234");
+  });
+});
+
+describe("renderTweetHtml polls", () => {
+  it("includes a plain poll block in the plain rendered tweet", () => {
+    const html = renderTweetHtml(
+      makeTweetData({
+        poll: { options: [{ label: "A", votes: 1 }], totalVotes: 1, closed: false },
+      }),
+    );
+    expect(html).toContain("🗳");
+    expect(html).toContain("A — 100% (1)");
+    expect(html).not.toContain("█");
+  });
+
+  it("uses the rich progress-bar poll in rich mode", () => {
+    const html = renderTweetHtml(
+      makeTweetData({
+        poll: { options: [{ label: "A", votes: 1 }], totalVotes: 1, closed: false },
+      }),
+      RICH_MESSAGE_LIMIT,
+      { rich: true },
+    );
+    expect(html).toContain("🗳");
+    expect(html).toContain("█");
+  });
+});
+
+describe("richPollHtml", () => {
+  const poll = {
+    options: [
+      { label: "Yes", votes: 75 },
+      { label: "No", votes: 25 },
+    ],
+    totalVotes: 100,
+    closed: false,
+  };
+
+  it("draws a monospace bar and bolds the leading option", () => {
+    const html = richPollHtml(poll);
+    expect(html).toContain("🗳");
+    expect(html).toContain("<code>");
+    expect(html).toContain("█");
+    expect(html).toContain("░");
+    // The winning option is emphasised.
+    expect(html).toContain("<b>Yes</b>");
+    expect(html).toContain("75% · 75");
+    expect(html).toContain("идёт");
+  });
+
+  it("escapes option labels and marks closed polls", () => {
+    const html = richPollHtml({
+      options: [{ label: "<b>x", votes: 1 }],
+      totalVotes: 1,
+      closed: true,
+    });
+    expect(html).toContain("&lt;b&gt;x");
+    expect(html).toContain("завершён");
+  });
+
+  it("tolerates a zero total without dividing by zero", () => {
+    const html = richPollHtml({
+      options: [{ label: "A", votes: 0 }],
+      totalVotes: 0,
+      closed: false,
+    });
+    expect(html).toContain("A — 0% · 0");
+    expect(html).toContain("░".repeat(12));
+  });
+});
+
+describe("formatThread", () => {
+  function photo(url: string): TweetMedia {
+    return makeMedia({ type: "photo", url });
+  }
+  function segment(id: string, text: string, overrides: Partial<TweetData> = {}): TweetData {
+    return makeTweetData({
+      tweetId: id,
+      url: `https://x.com/user/status/${id}`,
+      text,
+      ...overrides,
+    });
+  }
+
+  it("merges a thread with a marker and un-numbered segments", () => {
+    const post = formatThread([
+      segment("1", "first"),
+      segment("2", "second"),
+      segment("3", "third"),
+    ]);
+    expect(post.html).toContain("🧵");
+    expect(post.html).toContain("Тред — 3 поста");
+    expect(post.html).toContain("first");
+    expect(post.html).toContain("second");
+    expect(post.html).toContain("third");
+    // No numbering — posts are chained, not enumerated.
+    expect(post.html).not.toContain("1. first");
+    expect(post.html).not.toContain("2. second");
+  });
+
+  it("exposes per-post segments with their own media", () => {
+    const post = formatThread([
+      segment("1", "first", { media: [photo("https://pbs.twimg.com/1.jpg")] }),
+      segment("2", "second", { media: [photo("https://pbs.twimg.com/2.jpg")] }),
+    ]);
+    expect(post.segments).toBeDefined();
+    expect(post.segments!.length).toBe(2);
+    expect(post.segments![0]!.html).toContain("first");
+    expect(post.segments![0]!.media[0]!.url).toBe("https://pbs.twimg.com/1.jpg");
+    expect(post.segments![1]!.media[0]!.url).toBe("https://pbs.twimg.com/2.jpg");
+    expect(post.threadHeaderHtml).toContain("🧵");
+  });
+
+  it("links to the shared (last) tweet", () => {
+    const post = formatThread([segment("1", "a"), segment("2", "b")]);
+    expect(post.linkHtml).toContain("https://x.com/user/status/2");
+  });
+
+  it("combines media from every tweet", () => {
+    const post = formatThread([
+      segment("1", "a", { media: [photo("https://pbs.twimg.com/1.jpg")] }),
+      segment("2", "b", { media: [photo("https://pbs.twimg.com/2.jpg")] }),
+    ]);
+    expect(post.media.length).toBe(2);
+  });
+
+  it("renders a poll attached to a thread segment", () => {
+    const post = formatThread([
+      segment("1", "intro"),
+      segment("2", "vote", {
+        poll: { options: [{ label: "A", votes: 1 }], totalVotes: 1, closed: false },
+      }),
+    ]);
+    expect(post.html).toContain("🗳");
+    expect(post.segments![1]!.html).toContain("🗳");
+  });
+
+  it("drops trailing posts from the plain fallback to fit the limit", () => {
+    // Eight ~800-char posts overflow the 4096 plain limit but fit the rich one.
+    const tweets = Array.from({ length: 8 }, (_, index) =>
+      segment(String(index + 1), `post${index + 1} ${"y".repeat(800)}`),
+    );
+    const post = formatThread(tweets);
+    expect(post.html.length).toBeLessThanOrEqual(MESSAGE_LIMIT);
+    expect(post.html).toContain("ещё");
+    // The rich text fallback has room for every post.
+    expect(post.richHtml).toContain("post8 ");
+  });
+
+  it("falls back to single-tweet formatting for a one-item thread", () => {
+    const post = formatThread([segment("1", "only")]);
+    expect(post.html).not.toContain("🧵");
   });
 });
 
