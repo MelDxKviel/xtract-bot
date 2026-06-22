@@ -30,6 +30,11 @@ export interface ProcessOptions {
   telegramUserId: number;
   chatId: number | null;
   mode: ShareMode;
+  /**
+   * Force-disable thread unrolling for this request (e.g. the inline
+   * "share single post" variant). Defaults to the service-wide setting.
+   */
+  unrollThread?: boolean;
 }
 
 export interface TweetShareService {
@@ -190,7 +195,8 @@ export function createTweetShareService(deps: Deps): TweetShareService {
           tweet = await fetchAndCache(parsed.tweetId, parsed.sourceUrl, parsed.normalizedUrl);
         }
 
-        const thread = await unrollThread(tweet);
+        const wantThread = options.unrollThread !== false;
+        const thread = wantThread ? await unrollThread(tweet) : [tweet];
         const post = thread.length > 1 ? formatThread(thread) : formatTweet(tweet);
 
         const elapsedMs = elapsedSince(started);

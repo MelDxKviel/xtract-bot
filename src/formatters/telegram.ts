@@ -10,6 +10,13 @@ export const ORIGINAL_POST_LABEL = "🔗 Оригинальный пост";
 
 const LEADING_MENTIONS_RE = /^(@[A-Za-z0-9_]{1,50}(?:\s+|$))+/;
 
+export interface TelegramThreadSegment {
+  /** Rendered body for one thread post (text + poll, linkified; no author). */
+  html: string;
+  /** Media belonging to this specific post, attached right after its text. */
+  media: readonly TweetMedia[];
+}
+
 export interface TelegramPost {
   /** Body for a plain message (capped at the 4096-char Telegram limit). */
   html: string;
@@ -19,6 +26,14 @@ export interface TelegramPost {
   linkHtml: string;
   media: readonly TweetMedia[];
   extraMediaCount: number;
+  /**
+   * Present only for unrolled threads: one entry per post, in order. The Rich
+   * Message builder interleaves each post's text with its own media instead of
+   * merging everything into a single carousel.
+   */
+  segments?: readonly TelegramThreadSegment[];
+  /** Author + thread marker rendered once above the segments (threads only). */
+  threadHeaderHtml?: string;
 }
 
 export interface FormatOptions {
@@ -46,10 +61,12 @@ export function formatTweet(tweet: TweetData, options: FormatOptions = {}): Tele
 }
 
 /**
- * Format an unrolled thread (oldest → newest, all by the same author) into a
- * single post: one author header, each tweet's text/poll as a numbered segment,
- * and the media of every tweet merged into one carousel. The shared (last)
- * tweet supplies the canonical link and media cap.
+ * Format an unrolled thread (oldest → newest, all by the same author) as one
+ * post: a single author header, then each tweet's text/poll as a `segment`
+ * carrying its own media (the Rich Message builder interleaves text and media
+ * per post and joins them with dividers — no numbering). The flat `html` /
+ * `media` fields remain populated for the legacy non-rich fallbacks. The shared
+ * (last) tweet supplies the canonical link.
  */
 export function formatThread(
   tweets: readonly TweetData[],
@@ -62,6 +79,12 @@ export function formatThread(
   const media = collectThreadMedia(tweets);
   const linkHtml = originalPostLinkHtml(root.url);
   const suffixLen = "\n\n".length + linkHtml.length;
+  // Segments carry full (uncapped) bodies; the Rich Message builder enforces the
+  // 32k char / 50 media limits while interleaving.
+  const segments: TelegramThreadSegment[] = tweets.map((tweet) => ({
+    html: threadBodyHtml(tweet, RICH_MESSAGE_LIMIT),
+    media: tweet.media,
+  }));
   return {
     html: renderThreadHtml(tweets, MESSAGE_LIMIT - suffixLen, options),
     richHtml: renderThreadHtml(tweets, RICH_MESSAGE_LIMIT - suffixLen, { ...options, rich: true }),
@@ -69,6 +92,8 @@ export function formatThread(
     linkHtml,
     media: media.slice(0, MAX_MEDIA),
     extraMediaCount: Math.max(0, media.length - MAX_MEDIA),
+    segments,
+    threadHeaderHtml: threadHeaderHtml(root, tweets.length),
   };
 }
 
@@ -89,6 +114,25 @@ function collectThreadMedia(tweets: readonly TweetData[]): TweetMedia[] {
   return media;
 }
 
+function threadHeaderHtml(root: TweetData, count: number): string {
+  return `${authorHtml(root)}\n🧵 <i>Тред — ${count} ${pluralPosts(count)}</i>`;
+}
+
+// One thread post's body: linkified text plus an optional poll. No author and
+// no numbering — posts are chained, not enumerated.
+function threadBodyHtml(tweet: TweetData, cap: number): string {
+  const text = (tweet.text ?? "").trim();
+  const parts: string[] = [];
+  if (text) parts.push(linkifyEntities(truncateRaw(text, cap)));
+  if (tweet.poll) {
+    if (parts.length > 0) parts.push("");
+    parts.push(pollHtml(tweet.poll));
+  }
+  return parts.join("\n");
+}
+
+// Plain-text rendering used only by the non-rich fallbacks (the Rich Message
+// path uses `segments`). Posts are separated by a blank line, not numbered.
 function renderThreadHtml(
   tweets: readonly TweetData[],
   limit: number,
@@ -96,25 +140,20 @@ function renderThreadHtml(
 ): string {
   const root = tweets[tweets.length - 1]!;
   const total = tweets.length;
-  const header = authorHtml(root);
-  const threadNote = `🧵 <i>Тред — ${total} ${pluralPosts(total)}</i>`;
+  const header = threadHeaderHtml(root, total);
 
   const footer: string[] = [];
-  const totalMedia = collectThreadMedia(tweets);
-  if (totalMedia.length > MAX_MEDIA) {
-    footer.push(`📎 Показаны первые ${MAX_MEDIA} медиа из ${totalMedia.length}.`);
-  }
   if (options.originalLanguageLabel) {
     footer.push(`<i>Язык оригинала: ${escapeHtml(options.originalLanguageLabel)}</i>`);
   }
 
   const segCap = options.rich ? 4000 : 800;
-  const segments = tweets.map((tweet, index) => threadSegmentHtml(tweet, index + 1, segCap));
+  const bodies = tweets.map((tweet) => threadBodyHtml(tweet, segCap));
 
   const assemble = (count: number): string => {
-    const parts: string[] = [header, threadNote];
+    const parts: string[] = [header];
     for (let index = 0; index < count; index += 1) {
-      parts.push("", segments[index]!);
+      parts.push("", bodies[index]!);
     }
     if (count < total) {
       parts.push("", `<i>… ещё ${total - count} ${pluralPosts(total - count)}</i>`);
@@ -125,25 +164,15 @@ function renderThreadHtml(
     return parts.join("\n");
   };
 
-  // Drop trailing segments until the post fits; keep at least the first one.
+  // Drop trailing posts until it fits; keep at least the first one.
   for (let count = total; count >= 1; count -= 1) {
     const rendered = assemble(count);
     if (rendered.length <= limit) return rendered;
   }
-  return `${header}\n${threadNote}\n\n...`;
+  return `${header}\n\n...`;
 }
 
-function threadSegmentHtml(tweet: TweetData, index: number, cap: number): string {
-  const text = (tweet.text ?? "").trim();
-  const lines: string[] = [];
-  lines.push(text ? `${index}. ${linkifyEntities(truncateRaw(text, cap))}` : `${index}.`);
-  if (tweet.poll) {
-    lines.push("", pollHtml(tweet.poll));
-  }
-  return lines.join("\n");
-}
-
-function pluralPosts(count: number): string {
+export function pluralPosts(count: number): string {
   const mod100 = Math.abs(count) % 100;
   const mod10 = mod100 % 10;
   if (mod100 >= 11 && mod100 <= 14) return "постов";

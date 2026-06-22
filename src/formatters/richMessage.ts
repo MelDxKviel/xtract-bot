@@ -1,16 +1,28 @@
 import type { InputRichMessage } from "grammy/types";
 
-import { escapeAttr, type TelegramPost } from "@/formatters/telegram";
+import {
+  escapeAttr,
+  pluralPosts,
+  RICH_MESSAGE_LIMIT,
+  type TelegramPost,
+} from "@/formatters/telegram";
 import type { TweetMedia } from "@/providers/base";
+
+// Telegram caps a Rich Message at 50 media attachments in total.
+const RICH_MEDIA_LIMIT = 50;
 
 /**
  * Build a Bot API Rich Message from an already-formatted post.
  *
- * The tweet text is rendered as the message body and every media item is
- * attached as a swipeable carousel (`<tg-slideshow>`), so a post with several
- * photos/videos is shown in a single message instead of just the first one.
+ * For a single tweet the body is the tweet text followed by one media carousel.
+ * For an unrolled thread (`post.segments`), each post's text is followed by its
+ * own media and the posts are chained with `<hr/>` dividers — no numbering, and
+ * the long-message limit (not the 4096 plain limit) is used so nothing is cut.
  */
 export function buildRichMessage(post: TelegramPost): InputRichMessage {
+  if (post.segments && post.segments.length > 0) {
+    return buildThreadRichMessage(post);
+  }
   const text = textToRichHtml(post.richHtml);
   const carousel = mediaCarouselHtml(post.media);
   return {
@@ -20,6 +32,44 @@ export function buildRichMessage(post: TelegramPost): InputRichMessage {
     // (wrong) Telegram mentions and hashtag searches.
     skip_entity_detection: true,
   };
+}
+
+function buildThreadRichMessage(post: TelegramPost): InputRichMessage {
+  const segments = post.segments ?? [];
+  const blocks: string[] = [];
+  let used = 0;
+
+  if (post.threadHeaderHtml) {
+    const header = textToRichHtml(post.threadHeaderHtml);
+    blocks.push(header);
+    used += header.length;
+  }
+
+  let mediaBudget = RICH_MEDIA_LIMIT;
+  let included = 0;
+  for (const segment of segments) {
+    const body = segment.html ? textToRichHtml(segment.html) : "";
+    const allowed = segment.media.slice(0, Math.max(0, mediaBudget));
+    const carousel = mediaCarouselHtml(allowed);
+    const block = carousel ? (body ? `${body}\n${carousel}` : carousel) : body;
+
+    // Keep the whole message under the rich-text limit; always include the
+    // first post, then stop before overflowing rather than truncating mid-post.
+    const projected = used + block.length + "<hr/>".length;
+    if (included > 0 && projected > RICH_MESSAGE_LIMIT) break;
+
+    blocks.push(block);
+    mediaBudget -= allowed.length;
+    used = projected;
+    included += 1;
+  }
+
+  if (included < segments.length) {
+    const rest = segments.length - included;
+    blocks.push(`<i>… ещё ${rest} ${pluralPosts(rest)} — откройте оригинал</i>`);
+  }
+
+  return { html: blocks.join("<hr/>"), skip_entity_detection: true };
 }
 
 /**

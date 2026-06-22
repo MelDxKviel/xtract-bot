@@ -60,12 +60,15 @@ function failureResult(): ShareResult {
 interface InjectConfig {
   result?: ShareResult;
   translationEnabled?: boolean;
+  threadUnrollEnabled?: boolean;
   translator?: Translator;
+  onProcess?: (options: { unrollThread?: boolean }) => void;
 }
 
 function inject(config: InjectConfig = {}): (ctx: AppContext) => void {
   const tweetShare = {
-    async processUrl(): Promise<ShareResult> {
+    async processUrl(_parsed: unknown, options: { unrollThread?: boolean }): Promise<ShareResult> {
+      config.onProcess?.(options);
       return config.result ?? successResult();
     },
     async processText(): Promise<ShareResult> {
@@ -78,6 +81,9 @@ function inject(config: InjectConfig = {}): (ctx: AppContext) => void {
     },
   };
   return (ctx) => {
+    ctx.settings = {
+      threadUnrollEnabled: config.threadUnrollEnabled ?? true,
+    } as unknown as AppContext["settings"];
     ctx.services = {
       access: { isAdmin: () => false },
       stats: {},
@@ -136,20 +142,26 @@ describe("inline query", () => {
     expect(list[0]!.id).toBe("invalid-link");
   });
 
-  it("offers a single share result by default", async () => {
+  it("offers a single-post and a whole-thread result by default", async () => {
     const h = harness();
     await h.handle(inlineQuery(TWEET_URL));
     const list = results(h.lastCall("answerInlineQuery"));
-    expect(list.length).toBe(1);
-    expect(String(list[0]!.id)).toBe("tweet-123");
+    const ids = list.map((item) => String(item.id));
+    expect(ids).toEqual(["tweet-123", "tweet-thread-123"]);
+  });
+
+  it("omits the thread result when unrolling is disabled", async () => {
+    const h = harness({ threadUnrollEnabled: false });
+    await h.handle(inlineQuery(TWEET_URL));
+    const ids = results(h.lastCall("answerInlineQuery")).map((item) => String(item.id));
+    expect(ids).toEqual(["tweet-123"]);
   });
 
   it("offers a translation result when enabled", async () => {
     const h = harness({ translationEnabled: true });
     await h.handle(inlineQuery(TWEET_URL));
-    const list = results(h.lastCall("answerInlineQuery"));
-    expect(list.length).toBe(2);
-    expect(String(list[1]!.id)).toBe("tweet-ru-123");
+    const ids = results(h.lastCall("answerInlineQuery")).map((item) => String(item.id));
+    expect(ids).toContain("tweet-ru-123");
   });
 });
 
@@ -164,6 +176,21 @@ describe("chosen inline result", () => {
     const h = harness({ result: successResult() });
     await h.handle(chosenResult(TWEET_URL, "tweet-123", null));
     expect(h.calls.length).toBe(0);
+  });
+
+  it("does not unroll for the single-post result", async () => {
+    let seen: { unrollThread?: boolean } | undefined;
+    const h = harness({ result: successResult(), onProcess: (options) => (seen = options) });
+    await h.handle(chosenResult(TWEET_URL, "tweet-123"));
+    expect(seen!.unrollThread).toBe(false);
+  });
+
+  it("unrolls for the whole-thread result", async () => {
+    let seen: { unrollThread?: boolean } | undefined;
+    const h = harness({ result: successResult(), onProcess: (options) => (seen = options) });
+    await h.handle(chosenResult(TWEET_URL, "tweet-thread-123"));
+    expect(seen!.unrollThread).toBe(true);
+    expect(h.callsTo("editMessageText").length).toBe(1);
   });
 
   it("reports a fetch error", async () => {

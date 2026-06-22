@@ -249,7 +249,7 @@ describe("formatThread", () => {
     });
   }
 
-  it("merges a thread into one post with a thread marker and numbered segments", () => {
+  it("merges a thread with a marker and un-numbered segments", () => {
     const post = formatThread([
       segment("1", "first"),
       segment("2", "second"),
@@ -257,9 +257,25 @@ describe("formatThread", () => {
     ]);
     expect(post.html).toContain("🧵");
     expect(post.html).toContain("Тред — 3 поста");
-    expect(post.html).toContain("1. first");
-    expect(post.html).toContain("2. second");
-    expect(post.html).toContain("3. third");
+    expect(post.html).toContain("first");
+    expect(post.html).toContain("second");
+    expect(post.html).toContain("third");
+    // No numbering — posts are chained, not enumerated.
+    expect(post.html).not.toContain("1. first");
+    expect(post.html).not.toContain("2. second");
+  });
+
+  it("exposes per-post segments with their own media", () => {
+    const post = formatThread([
+      segment("1", "first", { media: [photo("https://pbs.twimg.com/1.jpg")] }),
+      segment("2", "second", { media: [photo("https://pbs.twimg.com/2.jpg")] }),
+    ]);
+    expect(post.segments).toBeDefined();
+    expect(post.segments!.length).toBe(2);
+    expect(post.segments![0]!.html).toContain("first");
+    expect(post.segments![0]!.media[0]!.url).toBe("https://pbs.twimg.com/1.jpg");
+    expect(post.segments![1]!.media[0]!.url).toBe("https://pbs.twimg.com/2.jpg");
+    expect(post.threadHeaderHtml).toContain("🧵");
   });
 
   it("links to the shared (last) tweet", () => {
@@ -283,18 +299,19 @@ describe("formatThread", () => {
       }),
     ]);
     expect(post.html).toContain("🗳");
+    expect(post.segments![1]!.html).toContain("🗳");
   });
 
-  it("drops trailing segments to fit the plain message limit", () => {
-    // Eight ~800-char segments overflow the 4096 plain limit but fit the rich one.
+  it("drops trailing posts from the plain fallback to fit the limit", () => {
+    // Eight ~800-char posts overflow the 4096 plain limit but fit the rich one.
     const tweets = Array.from({ length: 8 }, (_, index) =>
-      segment(String(index + 1), "y".repeat(800)),
+      segment(String(index + 1), `post${index + 1} ${"y".repeat(800)}`),
     );
     const post = formatThread(tweets);
     expect(post.html.length).toBeLessThanOrEqual(MESSAGE_LIMIT);
     expect(post.html).toContain("ещё");
-    // The rich variant has room for every segment.
-    expect(post.richHtml).toContain("8. ");
+    // The rich text fallback has room for every post.
+    expect(post.richHtml).toContain("post8 ");
   });
 
   it("falls back to single-tweet formatting for a one-item thread", () => {
