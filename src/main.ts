@@ -6,6 +6,7 @@ import { loadSettings, type Settings } from "@/config";
 import { closeDatabase, createDatabase } from "@/db/client";
 import { configureLogging, log } from "@/logging";
 import { createTweetProvider } from "@/providers/factory";
+import { cleanupExpiredCache, startCacheCleanup } from "@/services/cacheCleanup";
 import { createTranslator } from "@/services/translation";
 
 import type { AppContext } from "@/bot/context";
@@ -49,8 +50,20 @@ async function main(): Promise<void> {
     }
   });
 
+  // Periodically purge expired cache rows so the table doesn't grow unbounded.
+  const cacheCleanup = settings.cacheCleanupEnabled
+    ? startCacheCleanup({
+        intervalMs: settings.cacheCleanupIntervalSeconds * 1000,
+        run: () => cleanupExpiredCache(dbHandle.db),
+      })
+    : null;
+  if (cacheCleanup) {
+    log.info(`cache cleanup enabled (every ${settings.cacheCleanupIntervalSeconds}s)`);
+  }
+
   const drainAndClose = async (): Promise<void> => {
     log.info("draining in-flight handlers");
+    cacheCleanup?.stop();
     await Promise.allSettled(inFlight);
     try {
       await provider.close();

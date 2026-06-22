@@ -48,6 +48,20 @@ class FakeCache implements TweetCacheRepository {
     this.entries.set(tweetId, { errorCode });
     this.negativeCalls += 1;
   }
+
+  async count(): Promise<number> {
+    return this.entries.size;
+  }
+
+  async clearAll(): Promise<number> {
+    const removed = this.entries.size;
+    this.entries.clear();
+    return removed;
+  }
+
+  async clearExpired(): Promise<number> {
+    return 0;
+  }
 }
 
 class FakeEvents {

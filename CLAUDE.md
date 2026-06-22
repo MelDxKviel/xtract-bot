@@ -85,7 +85,7 @@ Selected via `TWEET_PROVIDER` env var. All implement `TweetProvider` (`getTweet`
 ### Database Schema (`src/db/schema.ts`)
 
 - `users` — Telegram user + `is_allowed` whitelist flag
-- `tweet_cache` — keyed by `tweet_id` with TTL (`expires_at`). Positive entries hold the JSONB `payload`; **negative** entries (deleted/not-found) have a null `payload` and a non-null `error_code` so providers aren't re-hit. The repository exposes `getEntry` (discriminated `hit`/`negative`), `set`, and `setNegative`.
+- `tweet_cache` — keyed by `tweet_id` with TTL (`expires_at`). Positive entries hold the JSONB `payload`; **negative** entries (deleted/not-found) have a null `payload` and a non-null `error_code` so providers aren't re-hit. The repository exposes `getEntry` (discriminated `hit`/`negative`), `set`, `setNegative`, `count`, `clearAll`, and `clearExpired`. Admins purge it manually via `/clearcache` (or `/clearcache expired`); a background loop (`src/services/cacheCleanup.ts`, gated by `CACHE_CLEANUP_ENABLED`) periodically calls `clearExpired` so the table doesn't grow unbounded.
 - `share_events` — per-share audit log (mode: private/inline, status, error_code)
 - `admin_actions` — admin allow/deny audit log
 

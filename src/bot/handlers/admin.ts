@@ -134,6 +134,24 @@ privateChat.callbackQuery(PANEL_TOGGLE_TRANSLATE, async (ctx) => {
   });
 });
 
+privateChat.command("clearcache", async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const arg = ctx.match?.trim().toLowerCase();
+  const expiredOnly = arg === "expired";
+  const removed = expiredOnly
+    ? await ctx.repositories.tweetCache.clearExpired()
+    : await ctx.repositories.tweetCache.clearAll();
+  await ctx.repositories.adminActions.create({
+    adminTelegramId: ctx.from!.id,
+    action: expiredOnly ? "clearcache_expired" : "clearcache",
+  });
+  await ctx.reply(
+    expiredOnly
+      ? `🧹 Удалено просроченных записей кэша: ${removed}.`
+      : `🗑 Кэш очищен. Удалено записей: ${removed}.`,
+  );
+});
+
 privateChat.command("health", async (ctx) => {
   if (!(await requireAdmin(ctx))) return;
 
@@ -163,19 +181,25 @@ privateChat.command("health", async (ctx) => {
 });
 
 async function renderPanelText(ctx: AppContext): Promise<string> {
-  const [summary, allowedCount] = await Promise.all([
+  const [summary, allowedCount, cacheCount] = await Promise.all([
     ctx.services.stats.getSummary(),
     ctx.services.access.countAllowedUsers(),
+    ctx.repositories.tweetCache.count(),
   ]);
   const whitelistStatus = ctx.runtimeConfig.whitelistEnabled ? "✅ включён" : "🔓 выключен";
   const translateStatus = ctx.runtimeConfig.russianTranslationEnabled
     ? "✅ включён"
     : "🔕 выключен";
+  const cleanupStatus = ctx.settings.cacheCleanupEnabled
+    ? `✅ каждые ${ctx.settings.cacheCleanupIntervalSeconds}с`
+    : "🔕 выключена";
   return (
     "🛠 Панель управления\n\n" +
     `📋 Whitelist: ${whitelistStatus}\n` +
     `🇷🇺 Перевод на русский (beta): ${translateStatus}\n` +
-    `👥 В whitelist: ${allowedCount}\n\n` +
+    `👥 В whitelist: ${allowedCount}\n` +
+    `🗂 В кэше: ${cacheCount}\n` +
+    `🧹 Автоочистка кэша: ${cleanupStatus}\n\n` +
     "📊 Статистика\n" +
     `🔢 Всего: ${summary.total}\n` +
     `✅ Успешно: ${summary.success}\n` +
