@@ -8,6 +8,7 @@ import {
   formatTweet,
   linkifyEntities,
   pollHtml,
+  richPollHtml,
   renderTweetHtml,
 } from "@/formatters/telegram";
 import { makeMedia, makeTweet, type TweetData, type TweetMedia } from "@/providers/base";
@@ -225,7 +226,7 @@ describe("pollHtml", () => {
 });
 
 describe("renderTweetHtml polls", () => {
-  it("includes a poll block in the rendered tweet", () => {
+  it("includes a plain poll block in the plain rendered tweet", () => {
     const html = renderTweetHtml(
       makeTweetData({
         poll: { options: [{ label: "A", votes: 1 }], totalVotes: 1, closed: false },
@@ -233,6 +234,62 @@ describe("renderTweetHtml polls", () => {
     );
     expect(html).toContain("🗳");
     expect(html).toContain("A — 100% (1)");
+    expect(html).not.toContain("█");
+  });
+
+  it("uses the rich progress-bar poll in rich mode", () => {
+    const html = renderTweetHtml(
+      makeTweetData({
+        poll: { options: [{ label: "A", votes: 1 }], totalVotes: 1, closed: false },
+      }),
+      RICH_MESSAGE_LIMIT,
+      { rich: true },
+    );
+    expect(html).toContain("🗳");
+    expect(html).toContain("█");
+  });
+});
+
+describe("richPollHtml", () => {
+  const poll = {
+    options: [
+      { label: "Yes", votes: 75 },
+      { label: "No", votes: 25 },
+    ],
+    totalVotes: 100,
+    closed: false,
+  };
+
+  it("draws a monospace bar and bolds the leading option", () => {
+    const html = richPollHtml(poll);
+    expect(html).toContain("🗳");
+    expect(html).toContain("<code>");
+    expect(html).toContain("█");
+    expect(html).toContain("░");
+    // The winning option is emphasised.
+    expect(html).toContain("<b>Yes</b>");
+    expect(html).toContain("75% · 75");
+    expect(html).toContain("идёт");
+  });
+
+  it("escapes option labels and marks closed polls", () => {
+    const html = richPollHtml({
+      options: [{ label: "<b>x", votes: 1 }],
+      totalVotes: 1,
+      closed: true,
+    });
+    expect(html).toContain("&lt;b&gt;x");
+    expect(html).toContain("завершён");
+  });
+
+  it("tolerates a zero total without dividing by zero", () => {
+    const html = richPollHtml({
+      options: [{ label: "A", votes: 0 }],
+      totalVotes: 0,
+      closed: false,
+    });
+    expect(html).toContain("A — 0% · 0");
+    expect(html).toContain("░".repeat(12));
   });
 });
 

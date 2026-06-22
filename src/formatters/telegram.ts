@@ -82,7 +82,7 @@ export function formatThread(
   // Segments carry full (uncapped) bodies; the Rich Message builder enforces the
   // 32k char / 50 media limits while interleaving.
   const segments: TelegramThreadSegment[] = tweets.map((tweet) => ({
-    html: threadBodyHtml(tweet, RICH_MESSAGE_LIMIT),
+    html: threadBodyHtml(tweet, RICH_MESSAGE_LIMIT, true),
     media: tweet.media,
   }));
   return {
@@ -120,13 +120,13 @@ function threadHeaderHtml(root: TweetData, count: number): string {
 
 // One thread post's body: linkified text plus an optional poll. No author and
 // no numbering — posts are chained, not enumerated.
-function threadBodyHtml(tweet: TweetData, cap: number): string {
+function threadBodyHtml(tweet: TweetData, cap: number, rich: boolean): string {
   const text = (tweet.text ?? "").trim();
   const parts: string[] = [];
   if (text) parts.push(linkifyEntities(truncateRaw(text, cap)));
   if (tweet.poll) {
     if (parts.length > 0) parts.push("");
-    parts.push(pollHtml(tweet.poll));
+    parts.push(rich ? richPollHtml(tweet.poll) : pollHtml(tweet.poll));
   }
   return parts.join("\n");
 }
@@ -148,7 +148,7 @@ function renderThreadHtml(
   }
 
   const segCap = options.rich ? 4000 : 800;
-  const bodies = tweets.map((tweet) => threadBodyHtml(tweet, segCap));
+  const bodies = tweets.map((tweet) => threadBodyHtml(tweet, segCap, options.rich ?? false));
 
   const assemble = (count: number): string => {
     const parts: string[] = [header];
@@ -194,6 +194,35 @@ export function pollHtml(poll: TweetPoll): string {
   return lines.join("\n");
 }
 
+// Width (in cells) of the monospace progress bar drawn for rich-message polls.
+const POLL_BAR_WIDTH = 12;
+
+/**
+ * Poll rendering for Rich Messages: a monospace progress bar per option (so the
+ * bars line up), the leading option in bold, plus percentage and vote count —
+ * a poll-like widget rather than the plain bullet list used as a fallback.
+ */
+export function richPollHtml(poll: TweetPoll): string {
+  const sumVotes = poll.options.reduce((sum, option) => sum + Math.max(0, option.votes), 0);
+  const total = poll.totalVotes > 0 ? poll.totalVotes : sumVotes;
+  const maxVotes = poll.options.reduce((max, option) => Math.max(max, option.votes), 0);
+
+  const lines = ["🗳 <b>Опрос</b>"];
+  for (const option of poll.options) {
+    const fraction = total > 0 ? Math.max(0, option.votes) / total : 0;
+    const filled = Math.max(0, Math.min(POLL_BAR_WIDTH, Math.round(fraction * POLL_BAR_WIDTH)));
+    const bar = "█".repeat(filled) + "░".repeat(POLL_BAR_WIDTH - filled);
+    const label = escapeHtml(option.label);
+    const isLeader = maxVotes > 0 && option.votes === maxVotes;
+    const name = isLeader ? `<b>${label}</b>` : label;
+    lines.push(`${name} — ${Math.round(fraction * 100)}% · ${formatVotes(option.votes)}`);
+    lines.push(`<code>${bar}</code>`);
+  }
+  const status = poll.closed ? "завершён" : "идёт";
+  lines.push(`<i>Всего голосов: ${formatVotes(total)} · ${status}</i>`);
+  return lines.join("\n");
+}
+
 function formatVotes(votes: number): string {
   return Math.round(Math.max(0, votes))
     .toString()
@@ -220,7 +249,7 @@ export function renderTweetHtml(
       ? [authorHtml(tweet), "", linkifyEntities(text)]
       : [authorHtml(tweet)];
     if (tweet.poll) {
-      parts.push("", pollHtml(tweet.poll));
+      parts.push("", options.rich ? richPollHtml(tweet.poll) : pollHtml(tweet.poll));
     }
     const related = tweet.quotedTweet ?? tweet.repliedToTweet;
     if (related) {
