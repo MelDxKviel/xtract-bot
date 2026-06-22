@@ -1,5 +1,6 @@
 import type { Database } from "@/db/client";
 import { log } from "@/logging";
+import { createProfileCacheRepository } from "@/repositories/profileCache";
 import { createTweetCacheRepository } from "@/repositories/tweetCache";
 
 export interface CacheCleanupHandle {
@@ -16,11 +17,15 @@ interface StartCacheCleanupOptions {
 }
 
 /**
- * Delete expired tweet-cache rows in a dedicated transaction. Used both by the
- * scheduled cleanup loop and as a building block for tests.
+ * Delete expired tweet- and profile-cache rows in a dedicated transaction. Used
+ * both by the scheduled cleanup loop and as a building block for tests.
  */
 export function cleanupExpiredCache(db: Database): Promise<number> {
-  return db.transaction(async (tx) => createTweetCacheRepository(tx).clearExpired());
+  return db.transaction(async (tx) => {
+    const tweets = await createTweetCacheRepository(tx).clearExpired();
+    const profiles = await createProfileCacheRepository(tx).clearExpired();
+    return tweets + profiles;
+  });
 }
 
 /**

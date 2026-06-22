@@ -10,40 +10,70 @@ import type { AppContext } from "@/bot/context";
 import {
   DISABLED_LINK_PREVIEW,
   INLINE_THUMBNAIL_INVALID,
+  INLINE_THUMBNAIL_PROFILE,
   INLINE_THUMBNAIL_SHARE,
   INLINE_THUMBNAIL_SIZE,
   INLINE_THUMBNAIL_THREAD,
   INLINE_THUMBNAIL_TRANSLATE_RU,
+  openProfileButton,
   originalPostButton,
 } from "@/bot/ui";
 import { formatTweet, type TelegramPost } from "@/formatters/telegram";
 import { buildRichMessage } from "@/formatters/richMessage";
 import type { TweetMedia } from "@/providers/base";
 import { languageNameInRussian, translateTweet, TranslationError } from "@/services/translation";
-import { extractFirstTweetUrl } from "@/utils/urls";
+import { extractFirstProfileUrl, extractFirstTweetUrl } from "@/utils/urls";
 
 // Result-id prefixes; order matters when matching since they share a stem.
 const THREAD_ID_PREFIX = "tweet-thread-";
 const TRANSLATED_ID_PREFIX = "tweet-ru-";
 const DEFAULT_ID_PREFIX = "tweet-";
+const PROFILE_ID_PREFIX = "profile-";
 
 export const inlineComposer = new Composer<AppContext>();
 
 inlineComposer.on("inline_query", async (ctx) => {
-  const parsed = extractFirstTweetUrl(ctx.inlineQuery.query ?? "");
+  const query = ctx.inlineQuery.query ?? "";
+  const parsed = extractFirstTweetUrl(query);
   if (parsed === null) {
+    // A bare handle link (no /status/) is a profile share.
+    const profile = extractFirstProfileUrl(query);
+    if (profile !== null) {
+      await ctx.answerInlineQuery(
+        [
+          {
+            type: "article",
+            id: `${PROFILE_ID_PREFIX}${profile.username}`,
+            title: "👤 Поделиться профилем",
+            description: profile.normalizedUrl,
+            thumbnail_url: INLINE_THUMBNAIL_PROFILE,
+            thumbnail_width: INLINE_THUMBNAIL_SIZE,
+            thumbnail_height: INLINE_THUMBNAIL_SIZE,
+            input_message_content: {
+              message_text: "⏳ Загрузка профиля...",
+              parse_mode: "HTML",
+              link_preview_options: DISABLED_LINK_PREVIEW,
+            },
+            reply_markup: openProfileButton(profile.normalizedUrl),
+          },
+        ],
+        { cache_time: 1, is_personal: true },
+      );
+      return;
+    }
+
     await ctx.answerInlineQuery(
       [
         {
           type: "article",
           id: "invalid-link",
-          title: "Нужна ссылка на пост X/Twitter",
-          description: "Например: https://x.com/user/status/123",
+          title: "Нужна ссылка на пост или профиль X/Twitter",
+          description: "Например: https://x.com/user/status/123 или https://x.com/user",
           thumbnail_url: INLINE_THUMBNAIL_INVALID,
           thumbnail_width: INLINE_THUMBNAIL_SIZE,
           thumbnail_height: INLINE_THUMBNAIL_SIZE,
           input_message_content: {
-            message_text: "🔗 Пришлите ссылку на пост X/Twitter.",
+            message_text: "🔗 Пришлите ссылку на пост или профиль X/Twitter.",
             link_preview_options: DISABLED_LINK_PREVIEW,
           },
         },
@@ -116,6 +146,11 @@ inlineComposer.on("chosen_inline_result", async (ctx) => {
   if (!inlineMessageId) return;
 
   const resultId = ctx.chosenInlineResult.result_id;
+  if (resultId.startsWith(PROFILE_ID_PREFIX)) {
+    await handleChosenProfile(ctx, inlineMessageId);
+    return;
+  }
+
   const shareThread = resultId.startsWith(THREAD_ID_PREFIX);
   const translateToRussian =
     !shareThread &&
@@ -173,6 +208,39 @@ inlineComposer.on("chosen_inline_result", async (ctx) => {
 
   await safeEditRich(ctx, inlineMessageId, post, button);
 });
+
+async function handleChosenProfile(ctx: AppContext, inlineMessageId: string): Promise<void> {
+  const chosen = ctx.chosenInlineResult;
+  if (!chosen) return;
+
+  const parsed = extractFirstProfileUrl(chosen.query ?? "");
+  if (parsed === null) {
+    await safeEditText(
+      ctx,
+      inlineMessageId,
+      "⚠️ Не удалось распознать ссылку на профиль X/Twitter.",
+    );
+    return;
+  }
+
+  const share = await ctx.services.profileShare.processUrl(parsed, {
+    telegramUserId: chosen.from.id,
+    chatId: null,
+    mode: "inline",
+  });
+  const button = openProfileButton(share.profile?.url ?? parsed.normalizedUrl);
+  if (!share.ok || share.post === null) {
+    await safeEditText(
+      ctx,
+      inlineMessageId,
+      "⚠️ Не удалось получить профиль. Возможно, он удален, приватный или временно недоступен.",
+      button,
+    );
+    return;
+  }
+
+  await safeEditRich(ctx, inlineMessageId, share.post, button);
+}
 
 async function safeEditRich(
   ctx: AppContext,

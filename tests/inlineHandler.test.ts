@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { AppContext } from "@/bot/context";
 import { inlineComposer } from "@/bot/handlers/inline";
+import { formatProfile } from "@/formatters/profile";
 import { formatTweet } from "@/formatters/telegram";
 import { makeTweet, type TweetData } from "@/providers/base";
+import { makeProfile, type ProfileData } from "@/providers/profileBase";
+import type { ProfileShareResult } from "@/services/profileShare";
 import type { ShareResult } from "@/services/tweetShare";
 import type { Translator } from "@/services/translation";
 
@@ -57,8 +60,36 @@ function failureResult(): ShareResult {
   };
 }
 
+function profileData(overrides: Partial<ProfileData> = {}): ProfileData {
+  return makeProfile({
+    username: "user",
+    name: "User",
+    url: "https://x.com/user",
+    bio: "profile bio",
+    ...overrides,
+  });
+}
+
+function profileSuccess(overrides: Partial<ProfileShareResult> = {}): ProfileShareResult {
+  const data = overrides.profile ?? profileData();
+  return {
+    status: "success",
+    ok: true,
+    username: data.username,
+    sourceUrl: data.url,
+    normalizedUrl: data.url,
+    profile: data,
+    post: formatProfile(data),
+    errorCode: null,
+    elapsedMs: 1,
+    cacheHit: false,
+    ...overrides,
+  };
+}
+
 interface InjectConfig {
   result?: ShareResult;
+  profileResult?: ProfileShareResult;
   translationEnabled?: boolean;
   threadUnrollEnabled?: boolean;
   translator?: Translator;
@@ -75,6 +106,14 @@ function inject(config: InjectConfig = {}): (ctx: AppContext) => void {
       return config.result ?? successResult();
     },
   };
+  const profileShare = {
+    async processUrl(): Promise<ProfileShareResult> {
+      return config.profileResult ?? profileSuccess();
+    },
+    async processText(): Promise<ProfileShareResult> {
+      return config.profileResult ?? profileSuccess();
+    },
+  };
   const translator: Translator = config.translator ?? {
     async translate() {
       return { text: "переведено", sourceLang: "en" };
@@ -88,6 +127,7 @@ function inject(config: InjectConfig = {}): (ctx: AppContext) => void {
       access: { isAdmin: () => false },
       stats: {},
       tweetShare,
+      profileShare,
     } as unknown as AppContext["services"];
     ctx.runtimeConfig = {
       whitelistEnabled: true,
@@ -163,6 +203,13 @@ describe("inline query", () => {
     const ids = results(h.lastCall("answerInlineQuery")).map((item) => String(item.id));
     expect(ids).toContain("tweet-ru-123");
   });
+
+  it("offers a profile result for a bare handle URL", async () => {
+    const h = harness();
+    await h.handle(inlineQuery("https://x.com/user"));
+    const ids = results(h.lastCall("answerInlineQuery")).map((item) => String(item.id));
+    expect(ids).toEqual(["profile-user"]);
+  });
 });
 
 describe("chosen inline result", () => {
@@ -205,6 +252,32 @@ describe("chosen inline result", () => {
     await h.handle(chosenResult("not a link"));
     const edit = h.lastCall("editMessageText");
     expect(String(edit!.payload.text)).toContain("Не удалось распознать");
+  });
+
+  it("edits the placeholder into a profile rich message", async () => {
+    const h = harness({ profileResult: profileSuccess() });
+    await h.handle(chosenResult("https://x.com/user", "profile-user"));
+    expect(h.callsTo("editMessageText").length).toBe(1);
+  });
+
+  it("reports a profile fetch error", async () => {
+    const h = harness({
+      profileResult: {
+        status: "error",
+        ok: false,
+        username: "user",
+        sourceUrl: "https://x.com/user",
+        normalizedUrl: "https://x.com/user",
+        profile: null,
+        post: null,
+        errorCode: "not_found",
+        elapsedMs: 1,
+        cacheHit: false,
+      },
+    });
+    await h.handle(chosenResult("https://x.com/user", "profile-user"));
+    const edit = h.lastCall("editMessageText");
+    expect(String(edit!.payload.text)).toContain("Не удалось получить профиль");
   });
 
   it("translates when the translation result is chosen", async () => {

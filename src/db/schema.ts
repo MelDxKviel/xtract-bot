@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import type { TweetDataPayload } from "@/providers/base";
+import type { ProfileDataPayload } from "@/providers/profileBase";
 
 export const users = pgTable(
   "users",
@@ -41,6 +42,24 @@ export const tweetCache = pgTable("tweet_cache", {
   // Null for negative cache entries (deleted/not-found tweets), which instead
   // carry an `errorCode` so we don't re-hit providers for known-bad tweets.
   payload: jsonb("payload").$type<TweetDataPayload>(),
+  errorCode: text("error_code"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
+export const profileCache = pgTable("profile_cache", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  // Lower-cased handle; X usernames are case-insensitive.
+  username: text("username").notNull().unique(),
+  sourceUrl: text("source_url").notNull(),
+  // Null for negative cache entries (deleted/not-found profiles), which instead
+  // carry an `errorCode` so we don't re-hit providers for known-bad handles.
+  payload: jsonb("payload").$type<ProfileDataPayload>(),
   errorCode: text("error_code"),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -92,5 +111,6 @@ export const adminActions = pgTable(
 export type UserRow = typeof users.$inferSelect;
 export type NewUserRow = typeof users.$inferInsert;
 export type TweetCacheRow = typeof tweetCache.$inferSelect;
+export type ProfileCacheRow = typeof profileCache.$inferSelect;
 export type ShareEventRow = typeof shareEvents.$inferSelect;
 export type AdminActionRow = typeof adminActions.$inferSelect;

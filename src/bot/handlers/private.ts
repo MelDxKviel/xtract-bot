@@ -1,17 +1,22 @@
 import { Composer, GrammyError, InputFile, type InlineKeyboard } from "grammy";
 import type { InputMediaPhoto, InputMediaVideo } from "grammy/types";
 
-import { DISABLED_LINK_PREVIEW, originalPostButton } from "@/bot/ui";
+import { DISABLED_LINK_PREVIEW, openProfileButton, originalPostButton } from "@/bot/ui";
 import type { AppContext } from "@/bot/context";
 import { buildRichMessage } from "@/formatters/richMessage";
+import type { TelegramPost } from "@/formatters/telegram";
 import type { TweetMedia } from "@/providers/base";
+import type { ProfileShareResult } from "@/services/profileShare";
 import type { ShareResult } from "@/services/tweetShare";
-import { extractFirstTweetUrl } from "@/utils/urls";
+import { extractFirstProfileUrl, extractFirstTweetUrl } from "@/utils/urls";
 
 const INVALID_LINK_TEXT =
-  "🔗 Пришлите ссылку на пост X/Twitter, например https://x.com/user/status/123";
+  "🔗 Пришлите ссылку на пост или профиль X/Twitter, например " +
+  "https://x.com/user/status/123 или https://x.com/user";
 const FETCH_ERROR_TEXT =
   "⚠️ Не удалось получить пост. Возможно, он удален, приватный или временно недоступен.";
+const PROFILE_ERROR_TEXT =
+  "⚠️ Не удалось получить профиль. Возможно, он удален, приватный или временно недоступен.";
 // Caption shown inside the animated "generating" placeholder (rich draft).
 const THINKING_CAPTION = "Загружаю пост…";
 
@@ -21,9 +26,11 @@ const privateChat = privateComposer.filter((ctx) => ctx.chat?.type === "private"
 
 privateChat.command("start", async (ctx) => {
   await ctx.reply(
-    "👋 <b>Xtract Bot</b> помогает красиво пересылать посты X/Twitter в Telegram.\n\n" +
+    "👋 <b>Xtract Bot</b> помогает красиво пересылать посты и профили X/Twitter в Telegram.\n\n" +
       "📨 Отправьте ссылку на пост X/Twitter в личный чат — бот вытащит текст, медиа " +
       "и оформит сообщение.\n" +
+      "👤 Отправьте ссылку на профиль (например <code>https://x.com/user</code>) — бот " +
+      "красиво оформит карточку профиля.\n" +
       "🔍 Или используйте inline режим: <code>@bot_username &lt;ссылка&gt;</code> в любом чате.\n\n" +
       "ℹ️ Подробнее: /help",
     { parse_mode: "HTML", link_preview_options: DISABLED_LINK_PREVIEW },
@@ -35,6 +42,8 @@ privateChat.command("help", async (ctx) => {
   const baseHelp =
     "📖 <b>Как пользоваться ботом</b>\n\n" +
     "📨 Отправьте ссылку на пост X/Twitter в личный чат с ботом.\n" +
+    "👤 Отправьте ссылку на профиль (<code>https://x.com/user</code>) — бот оформит " +
+    "карточку профиля.\n" +
     "✅ Поддерживаются: x.com, twitter.com, mobile.twitter.com, vxtwitter.com.\n\n" +
     "🔍 <b>Inline режим:</b> введите " +
     "<code>@bot_username &lt;ссылка&gt;</code> в любом чате.\n\n" +
@@ -68,9 +77,23 @@ privateChat.on("message:text", async (ctx) => {
     return;
   }
 
+  // A status link is a post; otherwise a bare handle link is a profile.
+  const tweetUrl = extractFirstTweetUrl(text);
+  const profileUrl = tweetUrl ? null : extractFirstProfileUrl(text);
+
   // Show an animated "generating" placeholder while we fetch (private chats only).
-  if (extractFirstTweetUrl(text) !== null) {
+  if (tweetUrl !== null || profileUrl !== null) {
     await sendThinkingDraft(ctx);
+  }
+
+  if (profileUrl !== null) {
+    const result = await ctx.services.profileShare.processUrl(profileUrl, {
+      telegramUserId: ctx.from.id,
+      chatId: ctx.chat.id,
+      mode: "private",
+    });
+    await sendProfileResult(ctx, result);
+    return;
   }
 
   const result = await ctx.services.tweetShare.processText(text, {
@@ -104,12 +127,31 @@ async function sendShareResult(ctx: AppContext, result: ShareResult): Promise<vo
     return;
   }
 
-  const post = result.post;
   const url = result.tweet?.url ?? result.normalizedUrl ?? "";
-  const button = originalPostButton(url);
+  await replyWithPost(ctx, result.post, originalPostButton(url));
+}
 
-  // Prefer a Rich Message: long text (up to ~32k chars, no truncation) plus an
-  // inline media carousel. Fall back to the legacy senders if it's rejected.
+async function sendProfileResult(ctx: AppContext, result: ProfileShareResult): Promise<void> {
+  if (result.status === "invalid_url") {
+    await ctx.reply(INVALID_LINK_TEXT, { link_preview_options: DISABLED_LINK_PREVIEW });
+    return;
+  }
+  if (!result.ok || result.post === null) {
+    await ctx.reply(PROFILE_ERROR_TEXT);
+    return;
+  }
+
+  const url = result.profile?.url ?? result.normalizedUrl ?? "";
+  await replyWithPost(ctx, result.post, openProfileButton(url));
+}
+
+// Send an already-formatted post: prefer a Rich Message (long text, up to ~32k
+// chars, plus an inline media carousel), then fall back to the legacy senders.
+async function replyWithPost(
+  ctx: AppContext,
+  post: TelegramPost,
+  button: InlineKeyboard,
+): Promise<void> {
   try {
     await ctx.replyWithRichMessage(buildRichMessage(post), { reply_markup: button });
     return;

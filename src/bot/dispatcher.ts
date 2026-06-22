@@ -3,6 +3,7 @@ import { Bot } from "grammy";
 import type { Settings } from "@/config";
 import type { Database } from "@/db/client";
 import type { TweetProvider } from "@/providers/base";
+import type { ProfileProvider } from "@/providers/profileBase";
 import type { Translator } from "@/services/translation";
 
 import { createRateLimiter } from "@/services/rateLimit";
@@ -19,17 +20,26 @@ interface BuildBotDeps {
   settings: Settings;
   db: Database;
   provider: TweetProvider;
+  profileProvider: ProfileProvider;
   translator: Translator;
 }
 
-export function buildBot({ settings, db, provider, translator }: BuildBotDeps): Bot<AppContext> {
+export function buildBot({
+  settings,
+  db,
+  provider,
+  profileProvider,
+  translator,
+}: BuildBotDeps): Bot<AppContext> {
   const bot = new Bot<AppContext>(settings.botToken);
 
   const runtimeConfig: RuntimeConfig = {
     whitelistEnabled: settings.accessWhitelistEnabled,
     russianTranslationEnabled: settings.russianTranslationEnabled,
   };
-  bot.use(sessionMiddleware({ db, settings, provider, translator, runtimeConfig }));
+  bot.use(
+    sessionMiddleware({ db, settings, provider, profileProvider, translator, runtimeConfig }),
+  );
   bot.use(accessMiddleware);
 
   if (settings.rateLimitEnabled) {

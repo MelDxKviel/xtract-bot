@@ -2,15 +2,15 @@ import type { MiddlewareFn } from "grammy";
 
 import type { AppContext } from "@/bot/context";
 import type { RateLimiter } from "@/services/rateLimit";
-import { extractFirstTweetUrl } from "@/utils/urls";
+import { extractFirstProfileUrl, extractFirstTweetUrl } from "@/utils/urls";
 
 const RATE_LIMITED_TEXT = "🐢 Слишком много запросов. Подождите немного и попробуйте снова.";
 
 type ShareKind = "private" | "inline";
 
-// Only the actions that actually fetch a tweet count against the budget: a
-// private message carrying a tweet URL, and the chosen inline result (which
-// triggers the real fetch). Cheap inline-query suggestions are not limited.
+// Only the actions that actually fetch (a tweet or a profile) count against the
+// budget: a private message carrying such a URL, and the chosen inline result
+// (which triggers the real fetch). Cheap inline-query suggestions are not limited.
 function classify(ctx: AppContext): ShareKind | null {
   if (ctx.chosenInlineResult) return "inline";
   const text = ctx.message?.text;
@@ -18,7 +18,7 @@ function classify(ctx: AppContext): ShareKind | null {
     ctx.chat?.type === "private" &&
     text &&
     !text.startsWith("/") &&
-    extractFirstTweetUrl(text) !== null
+    (extractFirstTweetUrl(text) !== null || extractFirstProfileUrl(text) !== null)
   ) {
     return "private";
   }

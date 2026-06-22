@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Xtract Bot** is a TypeScript Telegram bot that lets users share X/Twitter posts inside Telegram. It extracts tweet content (text, media, metadata) via pluggable providers and formats it for Telegram.
+**Xtract Bot** is a TypeScript Telegram bot that lets users share X/Twitter posts and profiles inside Telegram. It extracts tweet content (text, media, metadata) and profile cards (bio, stats, avatar) via pluggable providers and formats them for Telegram.
 
 Stack: TypeScript 5, grammY 1.42, Drizzle ORM (postgres-js), PostgreSQL 17, Vitest, Bun.
 
@@ -51,19 +51,21 @@ CI runs `typecheck`, `lint`, `format:check`, and `test` on every PR.
 
 **Inline query**: `@bot <url>` → `inline_query` handler immediately responds with "⏳ Loading…" placeholders (no fetch yet) → user selects result → `chosen_inline_result` handler runs the full share flow and edits the message in-place. It offers two variants — **Поделиться постом** (`tweet-<id>`, single post) and, when `THREAD_UNROLL_ENABLED`, **🧵 Поделиться тредом** (`tweet-thread-<id>`, whole thread) — plus the translation variant (`tweet-ru-<id>`) when enabled; the chosen `result_id` prefix selects whether to unroll (via `ProcessOptions.unrollThread`). Posts with media are edited into a Rich Message so all media is shown in one message; it falls back to the legacy single-media edit on failure.
 
+**Profile sharing**: a bare handle URL (e.g. `https://x.com/jack`, no `/status/`) is treated as a profile share, handled by `profileShareService` instead of `tweetShareService`. `src/utils/urls.ts` exposes `parseProfileUrl` / `extractFirstProfileUrl` (rejects status links, reserved routes like `/home` or `/i/...`, and non-handle deep links; accepts known profile sub-tabs like `/media`). Profiles are fetched by a separate `ProfileProvider` (`getProfile`), cached in `profile_cache` (with the same positive/negative TTL scheme as tweets), formatted by `formatProfile` into a `TelegramPost` (avatar + banner as media, verified badge, follower/following/post counts, location, website, join date), and sent through the **same** Rich Message / legacy-ladder path. In inline mode it adds a **👤 Поделиться профилем** result (`profile-<username>`). Both private and inline profile fetches count against the rate limiter.
+
 ### Key Layers
 
-| Layer        | Path                         | Role                                         |
-| ------------ | ---------------------------- | -------------------------------------------- |
-| Entry point  | `src/main.ts`                | Init DB, bot, provider; polling/webhook      |
-| Dispatcher   | `src/bot/dispatcher.ts`      | Register middlewares and composers           |
-| Handlers     | `src/bot/handlers/`          | `private.ts`, `admin.ts`, `inline.ts`        |
-| Middlewares  | `src/bot/middlewares/`       | `session.ts`, `access.ts`, `rateLimit.ts`    |
-| Services     | `src/services/`              | `access`, `stats`, `tweetShare`, `rateLimit` |
-| Repositories | `src/repositories/`          | Data access for each Drizzle table           |
-| Providers    | `src/providers/`             | Pluggable tweet fetching strategies          |
-| Formatters   | `src/formatters/telegram.ts` | Convert `TweetData` → HTML `TelegramPost`    |
-| Utils        | `src/utils/urls.ts`          | Parse X/Twitter/VxTwitter URLs               |
+| Layer        | Path                    | Role                                                                                        |
+| ------------ | ----------------------- | ------------------------------------------------------------------------------------------- |
+| Entry point  | `src/main.ts`           | Init DB, bot, provider; polling/webhook                                                     |
+| Dispatcher   | `src/bot/dispatcher.ts` | Register middlewares and composers                                                          |
+| Handlers     | `src/bot/handlers/`     | `private.ts`, `admin.ts`, `inline.ts`                                                       |
+| Middlewares  | `src/bot/middlewares/`  | `session.ts`, `access.ts`, `rateLimit.ts`                                                   |
+| Services     | `src/services/`         | `access`, `stats`, `tweetShare`, `profileShare`, `rateLimit`                                |
+| Repositories | `src/repositories/`     | Data access for each Drizzle table                                                          |
+| Providers    | `src/providers/`        | Pluggable tweet/profile fetching strategies                                                 |
+| Formatters   | `src/formatters/`       | `telegram.ts` (`TweetData` → `TelegramPost`), `profile.ts` (`ProfileData` → `TelegramPost`) |
+| Utils        | `src/utils/urls.ts`     | Parse X/Twitter/VxTwitter post & profile URLs                                               |
 
 ### Middleware & Dependency Injection
 
@@ -82,10 +84,13 @@ Selected via `TWEET_PROVIDER` env var. All implement `TweetProvider` (`getTweet`
 
 `TweetData` and `TweetMedia` are the shared domain types defined in `src/providers/base.ts`. `TweetData` also carries `inReplyToTweetId` (parent status id, used for thread unrolling) and `poll` (a `TweetPoll` of options + vote counts, rendered by `pollHtml`). Helper functions `tweetToPayload` / `tweetFromPayload` handle the JSONB serialisation used by the cache.
 
+**Profile providers** are a separate, smaller interface (`ProfileProvider` with `getProfile` / `close`, in `src/providers/profileBase.ts`) so the existing tweet providers (and their test fakes) stay untouched. `createProfileProvider` (`src/providers/profileFactory.ts`) returns `FakeProfileProvider` for `TWEET_PROVIDER=fake` and otherwise `PublicEmbedProfileProvider`, which hits FxTwitter's credential-free public user endpoint regardless of `TWEET_PROVIDER` (so profile sharing works even with `external_http` / `x_api`). `ProfileData` plus `profileToPayload` / `profileFromPayload` live alongside.
+
 ### Database Schema (`src/db/schema.ts`)
 
 - `users` — Telegram user + `is_allowed` whitelist flag
 - `tweet_cache` — keyed by `tweet_id` with TTL (`expires_at`). Positive entries hold the JSONB `payload`; **negative** entries (deleted/not-found) have a null `payload` and a non-null `error_code` so providers aren't re-hit. The repository exposes `getEntry` (discriminated `hit`/`negative`), `set`, `setNegative`, `count`, `clearAll`, and `clearExpired`. Admins purge it manually via `/clearcache` (or `/clearcache expired`); a background loop (`src/services/cacheCleanup.ts`, gated by `CACHE_CLEANUP_ENABLED`) periodically calls `clearExpired` so the table doesn't grow unbounded.
+- `profile_cache` — same shape/semantics as `tweet_cache` but keyed by lower-cased `username` and storing a `ProfileDataPayload` (TTL `PROFILE_CACHE_TTL_SECONDS`, default 6h). `/clearcache` and the cleanup loop purge it alongside `tweet_cache`.
 - `share_events` — per-share audit log (mode: private/inline, status, error_code)
 - `admin_actions` — admin allow/deny audit log
 
