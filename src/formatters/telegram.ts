@@ -281,7 +281,7 @@ export function renderTweetHtml(
 
 function authorHtml(tweet: TweetData): string {
   const label = `${tweet.authorName} (@${tweet.authorUsername})`;
-  return `🐦 <a href="${escapeAttr(tweet.authorUrl)}">${escapeHtml(label)}</a>`;
+  return `𝕏 <a href="${escapeAttr(tweet.authorUrl)}">${escapeHtml(label)}</a>`;
 }
 
 function relatedBlockHtml(tweet: TweetData, quoted: boolean, rich: boolean): string {
