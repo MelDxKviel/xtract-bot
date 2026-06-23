@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { AppContext } from "@/bot/context";
 import { privateComposer } from "@/bot/handlers/private";
+import { formatProfile } from "@/formatters/profile";
 import { formatTweet } from "@/formatters/telegram";
 import { makeMedia, makeTweet, type TweetData } from "@/providers/base";
+import { makeProfile, type ProfileData } from "@/providers/profileBase";
+import type { ProfileShareResult, ProfileShareService } from "@/services/profileShare";
 import type { ProcessOptions, ShareResult, TweetShareService } from "@/services/tweetShare";
 
 import { createHarness, type HarnessOptions } from "./support/botHarness";
@@ -54,8 +57,36 @@ function errorResult(status: ShareResult["status"], errorCode: string): ShareRes
   };
 }
 
+function profile(overrides: Partial<ProfileData> = {}): ProfileData {
+  return makeProfile({
+    username: "user",
+    name: "User",
+    url: "https://x.com/user",
+    bio: "profile bio",
+    ...overrides,
+  });
+}
+
+function profileSuccess(overrides: Partial<ProfileShareResult> = {}): ProfileShareResult {
+  const data = overrides.profile ?? profile();
+  return {
+    status: "success",
+    ok: true,
+    username: data.username,
+    sourceUrl: data.url,
+    normalizedUrl: data.url,
+    profile: data,
+    post: formatProfile(data),
+    errorCode: null,
+    elapsedMs: 1,
+    cacheHit: false,
+    ...overrides,
+  };
+}
+
 interface InjectConfig {
   result?: ShareResult;
+  profileResult?: ProfileShareResult;
   isAdmin?: boolean;
   onProcess?: (text: string) => void;
 }
@@ -70,11 +101,20 @@ function inject(config: InjectConfig = {}): (ctx: AppContext) => void {
       return config.result ?? successResult();
     },
   };
+  const profileShare: Pick<ProfileShareService, "processText" | "processUrl"> = {
+    async processText(): Promise<ProfileShareResult> {
+      return config.profileResult ?? profileSuccess();
+    },
+    async processUrl(): Promise<ProfileShareResult> {
+      return config.profileResult ?? profileSuccess();
+    },
+  };
   return (ctx) => {
     ctx.services = {
       access: { isAdmin: () => config.isAdmin ?? false },
       stats: {},
       tweetShare,
+      profileShare,
     } as unknown as AppContext["services"];
     ctx.runtimeConfig = { whitelistEnabled: true, russianTranslationEnabled: false };
   };
@@ -106,6 +146,7 @@ function harness(
 }
 
 const TWEET_URL = "https://x.com/user/status/123";
+const PROFILE_URL = "https://x.com/user";
 
 describe("private handler", () => {
   it("greets on /start", async () => {
@@ -171,5 +212,33 @@ describe("private handler", () => {
     const reply = h.lastCall("sendMessage");
     expect(reply).toBeDefined();
     expect(String(reply!.payload.text)).toContain("hello world");
+  });
+
+  it("shares a profile for a bare handle URL", async () => {
+    const h = harness({ profileResult: profileSuccess() });
+    await h.handle(privateText(PROFILE_URL));
+    expect(h.callsTo("sendRichMessageDraft").length).toBe(1);
+    expect(h.callsTo("sendRichMessage").length).toBe(1);
+  });
+
+  it("reports a profile fetch error", async () => {
+    const h = harness({
+      profileResult: {
+        status: "error",
+        ok: false,
+        username: "user",
+        sourceUrl: PROFILE_URL,
+        normalizedUrl: PROFILE_URL,
+        profile: null,
+        post: null,
+        errorCode: "not_found",
+        elapsedMs: 1,
+        cacheHit: false,
+      },
+    });
+    await h.handle(privateText(PROFILE_URL));
+    expect(String(h.lastCall("sendMessage")!.payload.text)).toContain(
+      "Не удалось получить профиль",
+    );
   });
 });

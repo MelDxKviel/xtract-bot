@@ -6,6 +6,7 @@ import { loadSettings, type Settings } from "@/config";
 import { closeDatabase, createDatabase } from "@/db/client";
 import { configureLogging, log } from "@/logging";
 import { createTweetProvider } from "@/providers/factory";
+import { createProfileProvider } from "@/providers/profileFactory";
 import { cleanupExpiredCache, startCacheCleanup } from "@/services/cacheCleanup";
 import { createTranslator } from "@/services/translation";
 
@@ -17,8 +18,9 @@ async function main(): Promise<void> {
 
   const dbHandle = createDatabase(settings.databaseUrl);
   const provider = createTweetProvider(settings);
+  const profileProvider = createProfileProvider(settings);
   const translator = createTranslator({ timeoutSeconds: settings.translationTimeoutSeconds });
-  const bot = buildBot({ settings, db: dbHandle.db, provider, translator });
+  const bot = buildBot({ settings, db: dbHandle.db, provider, profileProvider, translator });
 
   // Apply HTML parse mode and disabled link preview as Bot API defaults.
   bot.api.config.use((prev, method, payload, signal) => {
@@ -69,6 +71,11 @@ async function main(): Promise<void> {
       await provider.close();
     } catch (error) {
       log.error("error closing provider", error);
+    }
+    try {
+      await profileProvider.close();
+    } catch (error) {
+      log.error("error closing profile provider", error);
     }
     try {
       await closeDatabase(dbHandle);

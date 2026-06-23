@@ -34,6 +34,14 @@ function inject(config: InjectConfig, calls: FakeCacheCalls, actions: string[]) 
           return config.clearExpiredCount ?? 0;
         },
       },
+      profileCache: {
+        async clearAll() {
+          return 0;
+        },
+        async clearExpired() {
+          return 0;
+        },
+      },
       adminActions: {
         async create(input: { action: string }) {
           actions.push(input.action);

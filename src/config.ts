@@ -8,6 +8,7 @@ export interface Settings {
   russianTranslationEnabled: boolean;
   tweetProvider: TweetProviderName;
   tweetCacheTtlSeconds: number;
+  profileCacheTtlSeconds: number;
   negativeCacheTtlSeconds: number;
   cacheCleanupEnabled: boolean;
   cacheCleanupIntervalSeconds: number;
@@ -51,6 +52,7 @@ export function loadSettings(env: Record<string, string | undefined> = process.e
     russianTranslationEnabled: parseBool(env["RUSSIAN_TRANSLATION_ENABLED"], false),
     tweetProvider: provider,
     tweetCacheTtlSeconds: parseInt(env["TWEET_CACHE_TTL_SECONDS"], 86_400),
+    profileCacheTtlSeconds: parseInt(env["PROFILE_CACHE_TTL_SECONDS"], 21_600),
     negativeCacheTtlSeconds: parseInt(env["NEGATIVE_CACHE_TTL_SECONDS"], 600),
     cacheCleanupEnabled: parseBool(env["CACHE_CLEANUP_ENABLED"], true),
     cacheCleanupIntervalSeconds: Math.max(

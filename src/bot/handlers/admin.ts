@@ -138,9 +138,16 @@ privateChat.command("clearcache", async (ctx) => {
   if (!(await requireAdmin(ctx))) return;
   const arg = ctx.match?.trim().toLowerCase();
   const expiredOnly = arg === "expired";
-  const removed = expiredOnly
-    ? await ctx.repositories.tweetCache.clearExpired()
-    : await ctx.repositories.tweetCache.clearAll();
+  const [tweets, profiles] = expiredOnly
+    ? await Promise.all([
+        ctx.repositories.tweetCache.clearExpired(),
+        ctx.repositories.profileCache.clearExpired(),
+      ])
+    : await Promise.all([
+        ctx.repositories.tweetCache.clearAll(),
+        ctx.repositories.profileCache.clearAll(),
+      ]);
+  const removed = tweets + profiles;
   await ctx.repositories.adminActions.create({
     adminTelegramId: ctx.from!.id,
     action: expiredOnly ? "clearcache_expired" : "clearcache",
@@ -181,10 +188,11 @@ privateChat.command("health", async (ctx) => {
 });
 
 async function renderPanelText(ctx: AppContext): Promise<string> {
-  const [summary, allowedCount, cacheCount] = await Promise.all([
+  const [summary, allowedCount, cacheCount, profileCacheCount] = await Promise.all([
     ctx.services.stats.getSummary(),
     ctx.services.access.countAllowedUsers(),
     ctx.repositories.tweetCache.count(),
+    ctx.repositories.profileCache.count(),
   ]);
   const whitelistStatus = ctx.runtimeConfig.whitelistEnabled ? "✅ включён" : "🔓 выключен";
   const translateStatus = ctx.runtimeConfig.russianTranslationEnabled
@@ -198,7 +206,8 @@ async function renderPanelText(ctx: AppContext): Promise<string> {
     `📋 Whitelist: ${whitelistStatus}\n` +
     `🇷🇺 Перевод на русский (beta): ${translateStatus}\n` +
     `👥 В whitelist: ${allowedCount}\n` +
-    `🗂 В кэше: ${cacheCount}\n` +
+    `🗂 В кэше постов: ${cacheCount}\n` +
+    `🗂 В кэше профилей: ${profileCacheCount}\n` +
     `🧹 Автоочистка кэша: ${cleanupStatus}\n\n` +
     "📊 Статистика\n" +
     `🔢 Всего: ${summary.total}\n` +
