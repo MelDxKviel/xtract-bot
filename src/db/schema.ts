@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -70,6 +71,34 @@ export const profileCache = pgTable("profile_cache", {
     .default(sql`now()`),
 });
 
+// Maps a unique source avatar URL to the custom emoji we created from it. Keyed
+// by URL so a changed avatar (new image URL) transparently gets a fresh emoji.
+export const avatarEmoji = pgTable("avatar_emoji", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  avatarUrl: text("avatar_url").notNull().unique(),
+  customEmojiId: text("custom_emoji_id").notNull(),
+  setName: text("set_name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
+// The custom-emoji sticker sets the bot owns. Avatars are pooled into these
+// (Telegram caps a set at 200 emoji); `stickerCount` tracks fill so we can pick
+// a set with room and roll over to a new one when it is full.
+export const emojiStickerSets = pgTable("emoji_sticker_sets", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull().unique(),
+  setIndex: integer("set_index").notNull(),
+  stickerCount: integer("sticker_count").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
 export const shareEvents = pgTable(
   "share_events",
   {
@@ -112,5 +141,7 @@ export type UserRow = typeof users.$inferSelect;
 export type NewUserRow = typeof users.$inferInsert;
 export type TweetCacheRow = typeof tweetCache.$inferSelect;
 export type ProfileCacheRow = typeof profileCache.$inferSelect;
+export type AvatarEmojiRow = typeof avatarEmoji.$inferSelect;
+export type EmojiStickerSetRow = typeof emojiStickerSets.$inferSelect;
 export type ShareEventRow = typeof shareEvents.$inferSelect;
 export type AdminActionRow = typeof adminActions.$inferSelect;

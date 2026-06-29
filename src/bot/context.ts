@@ -5,6 +5,7 @@ import type { TweetProvider } from "@/providers/base";
 import type { ProfileProvider } from "@/providers/profileBase";
 import type { Repositories } from "@/repositories";
 import type { AccessService } from "@/services/access";
+import type { AvatarEmojiService } from "@/services/avatarEmoji";
 import type { ProfileShareService } from "@/services/profileShare";
 import type { StatsService } from "@/services/stats";
 import type { Translator } from "@/services/translation";
@@ -15,6 +16,8 @@ export interface AppServices {
   stats: StatsService;
   tweetShare: TweetShareService;
   profileShare: ProfileShareService;
+  /** Present only when AVATAR_EMOJI_ENABLED; turns avatars into custom emoji. */
+  avatarEmoji?: AvatarEmojiService;
 }
 
 export interface RuntimeConfig {

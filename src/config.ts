@@ -17,6 +17,9 @@ export interface Settings {
   rateLimitEnabled: boolean;
   rateLimitMaxRequests: number;
   rateLimitWindowSeconds: number;
+  avatarEmojiEnabled: boolean;
+  avatarEmojiOwnerId: number | null;
+  avatarEmojiTitlePrefix: string;
   tweetProviderTimeoutSeconds: number;
   translationTimeoutSeconds: number;
   logLevel: string;
@@ -64,6 +67,9 @@ export function loadSettings(env: Record<string, string | undefined> = process.e
     rateLimitEnabled: parseBool(env["RATE_LIMIT_ENABLED"], true),
     rateLimitMaxRequests: Math.max(1, parseInt(env["RATE_LIMIT_MAX_REQUESTS"], 20)),
     rateLimitWindowSeconds: Math.max(1, parseFloat(env["RATE_LIMIT_WINDOW_SECONDS"], 60)),
+    avatarEmojiEnabled: parseBool(env["AVATAR_EMOJI_ENABLED"], false),
+    avatarEmojiOwnerId: parseOptionalInt(env["AVATAR_EMOJI_OWNER_ID"]),
+    avatarEmojiTitlePrefix: env["AVATAR_EMOJI_TITLE_PREFIX"]?.trim() || "Xtract avatars",
     tweetProviderTimeoutSeconds: parseFloat(env["TWEET_PROVIDER_TIMEOUT_SECONDS"], 10),
     translationTimeoutSeconds: parseFloat(env["TRANSLATION_TIMEOUT_SECONDS"], 8),
     logLevel: env["LOG_LEVEL"] ?? "INFO",
@@ -115,6 +121,12 @@ function parseFloat(raw: string | undefined, fallback: number): number {
   if (raw === undefined || raw === "") return fallback;
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseOptionalInt(raw: string | undefined): number | null {
+  if (raw === undefined || raw.trim() === "") return null;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) ? parsed : null;
 }
 
 function nonEmpty(value: string | undefined): string | null {

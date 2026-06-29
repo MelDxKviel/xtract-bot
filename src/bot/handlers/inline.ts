@@ -19,7 +19,7 @@ import {
   originalPostButton,
 } from "@/bot/ui";
 import { formatTweet, type TelegramPost } from "@/formatters/telegram";
-import { buildRichMessage } from "@/formatters/richMessage";
+import { buildRichMessage, withAvatarEmoji } from "@/formatters/richMessage";
 import type { TweetMedia } from "@/providers/base";
 import { languageNameInRussian, translateTweet, TranslationError } from "@/services/translation";
 import { extractFirstProfileUrl, extractFirstTweetUrl } from "@/utils/urls";
@@ -239,7 +239,25 @@ async function handleChosenProfile(ctx: AppContext, inlineMessageId: string): Pr
     return;
   }
 
-  await safeEditRich(ctx, inlineMessageId, share.post, button);
+  const avatarEmoji = await resolveAvatarEmoji(ctx, share.profile?.avatarUrl);
+  await safeEditRich(ctx, inlineMessageId, share.post, button, avatarEmoji);
+}
+
+interface AvatarEmoji {
+  id: string;
+  glyph: string;
+}
+
+// Best-effort: turn the avatar into a custom emoji. Returns undefined when the
+// feature is off or anything fails (it never throws).
+async function resolveAvatarEmoji(
+  ctx: AppContext,
+  avatarUrl: string | null | undefined,
+): Promise<AvatarEmoji | undefined> {
+  const service = ctx.services.avatarEmoji;
+  if (!service || !avatarUrl) return undefined;
+  const id = await service.resolve(avatarUrl);
+  return id ? { id, glyph: service.fallbackGlyph } : undefined;
 }
 
 async function safeEditRich(
@@ -247,17 +265,25 @@ async function safeEditRich(
   inlineMessageId: string,
   post: TelegramPost,
   replyMarkup: InlineKeyboard,
+  avatarEmoji?: AvatarEmoji,
 ): Promise<void> {
   // Edit the placeholder into a Rich Message: long text plus a media carousel.
-  try {
-    await ctx.api.editMessageTextInline(inlineMessageId, buildRichMessage(post), {
-      reply_markup: replyMarkup,
-    });
-    return;
-  } catch (error) {
-    if (!(error instanceof GrammyError)) throw error;
+  // With an avatar emoji, try it first and retry without it if it's rejected.
+  const rich = buildRichMessage(post);
+  const candidates = avatarEmoji
+    ? [withAvatarEmoji(rich, avatarEmoji.id, avatarEmoji.glyph), rich]
+    : [rich];
+  for (const candidate of candidates) {
+    try {
+      await ctx.api.editMessageTextInline(inlineMessageId, candidate, {
+        reply_markup: replyMarkup,
+      });
+      return;
+    } catch (error) {
+      if (!(error instanceof GrammyError)) throw error;
 
-    console.error("failed to edit inline rich message", error);
+      console.error("failed to edit inline rich message", error);
+    }
   }
 
   // Fall back to the legacy single-media / text edit if rich messages are unavailable.

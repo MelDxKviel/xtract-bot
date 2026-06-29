@@ -6,6 +6,7 @@ import type { TweetProvider } from "@/providers/base";
 import type { ProfileProvider } from "@/providers/profileBase";
 import { createRepositories } from "@/repositories";
 import { createAccessService } from "@/services/access";
+import type { AvatarEmojiService } from "@/services/avatarEmoji";
 import { createProfileShareService } from "@/services/profileShare";
 import { createStatsService } from "@/services/stats";
 import type { Translator } from "@/services/translation";
@@ -20,6 +21,7 @@ interface Deps {
   profileProvider: ProfileProvider;
   translator: Translator;
   runtimeConfig: RuntimeConfig;
+  avatarEmoji?: AvatarEmojiService;
 }
 
 export function sessionMiddleware({
@@ -29,6 +31,7 @@ export function sessionMiddleware({
   profileProvider,
   translator,
   runtimeConfig,
+  avatarEmoji,
 }: Deps): MiddlewareFn<AppContext> {
   return async (ctx, next) => {
     await db.transaction(async (tx) => {
@@ -60,6 +63,7 @@ export function sessionMiddleware({
           cacheTtlSeconds: settings.profileCacheTtlSeconds,
           negativeCacheTtlSeconds: settings.negativeCacheTtlSeconds,
         }),
+        avatarEmoji,
       };
       await next();
     });

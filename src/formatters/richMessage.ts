@@ -34,6 +34,23 @@ export function buildRichMessage(post: TelegramPost): InputRichMessage {
   };
 }
 
+/**
+ * Prepend a custom-emoji avatar to a Rich Message body. The `<tg-emoji>` tag
+ * wraps a plain fallback glyph shown wherever the custom emoji can't render
+ * (non-premium forwards, system notifications). Telegram only delivers the
+ * custom emoji when the bot is eligible (owner has Premium, or a Fragment
+ * username), so callers should retry without it if the send is rejected.
+ */
+export function withAvatarEmoji(
+  rich: InputRichMessage,
+  customEmojiId: string,
+  fallbackGlyph: string,
+): InputRichMessage {
+  if (!("html" in rich) || typeof rich.html !== "string") return rich;
+  const emoji = `<tg-emoji emoji-id="${escapeAttr(customEmojiId)}">${fallbackGlyph}</tg-emoji> `;
+  return { ...rich, html: `${emoji}${rich.html}` };
+}
+
 function buildThreadRichMessage(post: TelegramPost): InputRichMessage {
   const segments = post.segments ?? [];
   const blocks: string[] = [];

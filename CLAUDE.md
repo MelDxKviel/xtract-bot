@@ -53,6 +53,8 @@ CI runs `typecheck`, `lint`, `format:check`, and `test` on every PR.
 
 **Profile sharing**: a bare handle URL (e.g. `https://x.com/jack`, no `/status/`) is treated as a profile share, handled by `profileShareService` instead of `tweetShareService`. `src/utils/urls.ts` exposes `parseProfileUrl` / `extractFirstProfileUrl` (rejects status links, reserved routes like `/home` or `/i/...`, and non-handle deep links; accepts known profile sub-tabs like `/media`). Profiles are fetched by a separate `ProfileProvider` (`getProfile`), cached in `profile_cache` (with the same positive/negative TTL scheme as tweets), formatted by `formatProfile` into a `TelegramPost` (avatar + banner as media, verified badge, follower/following/post counts, location, website, join date), and sent through the **same** Rich Message / legacy-ladder path. In inline mode it adds a **👤 Поделиться профилем** result (`profile-<username>`). Both private and inline profile fetches count against the rate limiter.
 
+**Avatar custom emoji** (opt-in, `AVATAR_EMOJI_ENABLED`, default off): when sharing a profile, the bot can show the avatar as an inline **custom emoji** prepended to the message. `avatarEmojiService` (`src/services/avatarEmoji.ts`) downloads the avatar, resizes it to a 100×100 PNG (`src/utils/image.ts`, via `jimp`), and uploads it as a `custom_emoji` sticker — pooling avatars into bot-owned sets (200 max each) tracked in `emoji_sticker_sets`, with the `avatar_url → custom_emoji_id` mapping cached in `avatar_emoji`. The service is **best-effort**: any failure (download, image, Telegram) resolves to `null` and the message is sent without the emoji. The handlers (`private.ts` `replyWithPost`, `inline.ts` `safeEditRich`) inject the emoji into the Rich Message via `withAvatarEmoji` (`src/formatters/richMessage.ts`) and **retry the send without it** if Telegram rejects the custom emoji. The service is built once in `buildBot` (it needs `bot.api` + a non-transactional DB handle) and attached to `ctx.services.avatarEmoji`; sets are attributed to `AVATAR_EMOJI_OWNER_ID` (default: first admin). **Telegram only delivers bot-sent custom emoji when the bot is eligible** — the owner has Telegram Premium, or the bot has a Fragment username; otherwise viewers see the fallback glyph. Tweet-author avatars are out of scope (`TweetData` carries no avatar URL).
+
 ### Key Layers
 
 | Layer        | Path                    | Role                                                                                        |
@@ -61,7 +63,7 @@ CI runs `typecheck`, `lint`, `format:check`, and `test` on every PR.
 | Dispatcher   | `src/bot/dispatcher.ts` | Register middlewares and composers                                                          |
 | Handlers     | `src/bot/handlers/`     | `private.ts`, `admin.ts`, `inline.ts`                                                       |
 | Middlewares  | `src/bot/middlewares/`  | `session.ts`, `access.ts`, `rateLimit.ts`                                                   |
-| Services     | `src/services/`         | `access`, `stats`, `tweetShare`, `profileShare`, `rateLimit`                                |
+| Services     | `src/services/`         | `access`, `stats`, `tweetShare`, `profileShare`, `rateLimit`, `avatarEmoji`                 |
 | Repositories | `src/repositories/`     | Data access for each Drizzle table                                                          |
 | Providers    | `src/providers/`        | Pluggable tweet/profile fetching strategies                                                 |
 | Formatters   | `src/formatters/`       | `telegram.ts` (`TweetData` → `TelegramPost`), `profile.ts` (`ProfileData` → `TelegramPost`) |
@@ -91,6 +93,8 @@ Selected via `TWEET_PROVIDER` env var. All implement `TweetProvider` (`getTweet`
 - `users` — Telegram user + `is_allowed` whitelist flag
 - `tweet_cache` — keyed by `tweet_id` with TTL (`expires_at`). Positive entries hold the JSONB `payload`; **negative** entries (deleted/not-found) have a null `payload` and a non-null `error_code` so providers aren't re-hit. The repository exposes `getEntry` (discriminated `hit`/`negative`), `set`, `setNegative`, `count`, `clearAll`, and `clearExpired`. Admins purge it manually via `/clearcache` (or `/clearcache expired`); a background loop (`src/services/cacheCleanup.ts`, gated by `CACHE_CLEANUP_ENABLED`) periodically calls `clearExpired` so the table doesn't grow unbounded.
 - `profile_cache` — same shape/semantics as `tweet_cache` but keyed by lower-cased `username` and storing a `ProfileDataPayload` (TTL `PROFILE_CACHE_TTL_SECONDS`, default 6h). `/clearcache` and the cleanup loop purge it alongside `tweet_cache`.
+- `avatar_emoji` — maps a unique source `avatar_url` to the `custom_emoji_id` created from it (keyed by URL, so a changed avatar gets a fresh emoji). Written via a non-transactional DB handle so the mapping survives even if the request transaction rolls back.
+- `emoji_sticker_sets` — the bot-owned custom-emoji sets avatars are pooled into (Telegram caps a set at 200). `sticker_count` tracks fill so the service picks a set with room and rolls over (`set_index` + 1) when full.
 - `share_events` — per-share audit log (mode: private/inline, status, error_code)
 - `admin_actions` — admin allow/deny audit log
 

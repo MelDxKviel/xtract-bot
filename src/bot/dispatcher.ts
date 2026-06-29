@@ -6,7 +6,14 @@ import type { TweetProvider } from "@/providers/base";
 import type { ProfileProvider } from "@/providers/profileBase";
 import type { Translator } from "@/services/translation";
 
+import {
+  createAvatarEmojiService,
+  createGrammyStickerClient,
+  type AvatarEmojiService,
+} from "@/services/avatarEmoji";
 import { createRateLimiter } from "@/services/rateLimit";
+import { createAvatarEmojiRepository } from "@/repositories/avatarEmoji";
+import { log } from "@/logging";
 
 import type { AppContext, RuntimeConfig } from "@/bot/context";
 import { adminComposer } from "@/bot/handlers/admin";
@@ -37,8 +44,19 @@ export function buildBot({
     whitelistEnabled: settings.accessWhitelistEnabled,
     russianTranslationEnabled: settings.russianTranslationEnabled,
   };
+
+  const avatarEmoji = buildAvatarEmojiService(bot, settings, db);
+
   bot.use(
-    sessionMiddleware({ db, settings, provider, profileProvider, translator, runtimeConfig }),
+    sessionMiddleware({
+      db,
+      settings,
+      provider,
+      profileProvider,
+      translator,
+      runtimeConfig,
+      avatarEmoji,
+    }),
   );
   bot.use(accessMiddleware);
 
@@ -55,4 +73,25 @@ export function buildBot({
   bot.use(inlineComposer);
 
   return bot;
+}
+
+// Build the avatar→custom-emoji service when enabled. Sets created by the bot
+// are attributed to a Telegram user, so an owner id is required; fall back to
+// the first admin and disable the feature if neither is configured.
+function buildAvatarEmojiService(
+  bot: Bot<AppContext>,
+  settings: Settings,
+  db: Database,
+): AvatarEmojiService | undefined {
+  if (!settings.avatarEmojiEnabled) return undefined;
+  const ownerId = settings.avatarEmojiOwnerId ?? [...settings.adminIds][0] ?? null;
+  if (ownerId === null) {
+    log.warn("AVATAR_EMOJI_ENABLED but no AVATAR_EMOJI_OWNER_ID or ADMIN_IDS set; disabling");
+    return undefined;
+  }
+  return createAvatarEmojiService({
+    client: createGrammyStickerClient(bot.api, ownerId),
+    repository: createAvatarEmojiRepository(db),
+    titlePrefix: settings.avatarEmojiTitlePrefix,
+  });
 }

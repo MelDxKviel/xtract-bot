@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { formatThread, formatTweet } from "@/formatters/telegram";
-import { buildRichMessage, mediaCarouselHtml } from "@/formatters/richMessage";
+import { buildRichMessage, mediaCarouselHtml, withAvatarEmoji } from "@/formatters/richMessage";
 import { makeMedia, makeTweet, type TweetData, type TweetMedia } from "@/providers/base";
 
 function makeTweetData(overrides: Partial<TweetData> = {}): TweetData {
@@ -93,6 +93,34 @@ describe("buildRichMessage", () => {
 
   it("disables auto entity detection so Twitter handles aren't mis-linked", () => {
     expect(buildRichMessage(formatTweet(makeTweetData())).skip_entity_detection).toBe(true);
+  });
+});
+
+describe("withAvatarEmoji", () => {
+  it("prepends a <tg-emoji> with the id and fallback glyph to the body", () => {
+    const rich = buildRichMessage(formatTweet(makeTweetData()));
+    const withEmoji = withAvatarEmoji(rich, "5368324170671202286", "👤");
+    expect(withEmoji.html).toContain('<tg-emoji emoji-id="5368324170671202286">👤</tg-emoji> ');
+    expect(withEmoji.html!.startsWith("<tg-emoji")).toBe(true);
+  });
+
+  it("escapes the custom emoji id in the attribute", () => {
+    const rich = buildRichMessage(formatTweet(makeTweetData()));
+    const withEmoji = withAvatarEmoji(rich, 'evil"&<', "👤");
+    expect(withEmoji.html).toContain('emoji-id="evil&quot;&amp;&lt;"');
+  });
+
+  it("does not mutate the original rich message", () => {
+    const rich = buildRichMessage(formatTweet(makeTweetData()));
+    const original = rich.html;
+    withAvatarEmoji(rich, "123", "👤");
+    expect(rich.html).toBe(original);
+    expect(rich.html).not.toContain("tg-emoji");
+  });
+
+  it("preserves skip_entity_detection", () => {
+    const rich = buildRichMessage(formatTweet(makeTweetData()));
+    expect(withAvatarEmoji(rich, "123", "👤").skip_entity_detection).toBe(true);
   });
 });
 

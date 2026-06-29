@@ -3,7 +3,7 @@ import type { InputMediaPhoto, InputMediaVideo } from "grammy/types";
 
 import { DISABLED_LINK_PREVIEW, openProfileButton, originalPostButton } from "@/bot/ui";
 import type { AppContext } from "@/bot/context";
-import { buildRichMessage } from "@/formatters/richMessage";
+import { buildRichMessage, withAvatarEmoji } from "@/formatters/richMessage";
 import type { TelegramPost } from "@/formatters/telegram";
 import type { TweetMedia } from "@/providers/base";
 import type { ProfileShareResult } from "@/services/profileShare";
@@ -142,23 +142,50 @@ async function sendProfileResult(ctx: AppContext, result: ProfileShareResult): P
   }
 
   const url = result.profile?.url ?? result.normalizedUrl ?? "";
-  await replyWithPost(ctx, result.post, openProfileButton(url));
+  const avatarEmoji = await resolveAvatarEmoji(ctx, result.profile?.avatarUrl);
+  await replyWithPost(ctx, result.post, openProfileButton(url), avatarEmoji);
+}
+
+interface AvatarEmoji {
+  id: string;
+  glyph: string;
+}
+
+// Best-effort: turn the avatar into a custom emoji to show inline. Returns
+// undefined when the feature is off or anything fails (it never throws).
+async function resolveAvatarEmoji(
+  ctx: AppContext,
+  avatarUrl: string | null | undefined,
+): Promise<AvatarEmoji | undefined> {
+  const service = ctx.services.avatarEmoji;
+  if (!service || !avatarUrl) return undefined;
+  const id = await service.resolve(avatarUrl);
+  return id ? { id, glyph: service.fallbackGlyph } : undefined;
 }
 
 // Send an already-formatted post: prefer a Rich Message (long text, up to ~32k
 // chars, plus an inline media carousel), then fall back to the legacy senders.
+// When an avatar emoji is given, try it first and retry without it if Telegram
+// rejects the custom emoji (e.g. the bot isn't eligible to send one).
 async function replyWithPost(
   ctx: AppContext,
   post: TelegramPost,
   button: InlineKeyboard,
+  avatarEmoji?: AvatarEmoji,
 ): Promise<void> {
-  try {
-    await ctx.replyWithRichMessage(buildRichMessage(post), { reply_markup: button });
-    return;
-  } catch (error) {
-    if (!(error instanceof GrammyError)) throw error;
+  const rich = buildRichMessage(post);
+  const candidates = avatarEmoji
+    ? [withAvatarEmoji(rich, avatarEmoji.id, avatarEmoji.glyph), rich]
+    : [rich];
+  for (const candidate of candidates) {
+    try {
+      await ctx.replyWithRichMessage(candidate, { reply_markup: button });
+      return;
+    } catch (error) {
+      if (!(error instanceof GrammyError)) throw error;
 
-    console.error("failed to send rich message", error);
+      console.error("failed to send rich message", error);
+    }
   }
 
   if (post.media.length > 0) {
