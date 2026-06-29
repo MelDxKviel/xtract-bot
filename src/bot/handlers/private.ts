@@ -57,6 +57,7 @@ privateChat.command("help", async (ctx) => {
     "/deny &lt;telegram_id&gt; — удалить из whitelist\n" +
     "/whitelist [on|off] — статус/включить/выключить whitelist\n" +
     "/translate [on|off] — перевод на русский в inline (beta)\n" +
+    "/avataremoji [on|off] — аватарка автора как custom emoji\n" +
     "/health — проверка БД и провайдера";
   await ctx.reply(baseHelp + (isAdmin ? adminHelp : ""), {
     parse_mode: "HTML",
@@ -159,7 +160,7 @@ async function resolveAvatarEmoji(
   avatarUrl: string | null | undefined,
 ): Promise<AvatarEmoji | undefined> {
   const service = ctx.services.avatarEmoji;
-  if (!service || !avatarUrl) return undefined;
+  if (!service || !ctx.runtimeConfig.avatarEmojiEnabled || !avatarUrl) return undefined;
   const id = await service.resolve(avatarUrl);
   return id ? { id, glyph: service.fallbackGlyph } : undefined;
 }

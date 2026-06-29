@@ -102,6 +102,39 @@ privateChat.command("translate", async (ctx) => {
   }
 });
 
+privateChat.command("avataremoji", async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  // The service is built only when an owner id can be resolved; without it the
+  // feature can't run, so enabling is pointless.
+  if (!ctx.services.avatarEmoji) {
+    await ctx.reply(
+      "⚠️ Аватарки-эмодзи недоступны: задайте AVATAR_EMOJI_OWNER_ID или ADMIN_IDS " +
+        "(владельца создаваемых наборов стикеров) и перезапустите бота.",
+    );
+    return;
+  }
+  const arg = ctx.match?.trim().toLowerCase();
+  if (arg === "on") {
+    ctx.runtimeConfig.avatarEmojiEnabled = true;
+    await ctx.reply(
+      "✅ Аватарки-эмодзи включены.\n\n" +
+        "ℹ️ Telegram покажет их, только если у владельца бота есть Premium или у бота " +
+        "куплен Fragment-юзернейм; иначе зрители увидят запасной эмодзи.",
+    );
+  } else if (arg === "off") {
+    ctx.runtimeConfig.avatarEmojiEnabled = false;
+    await ctx.reply("🔕 Аватарки-эмодзи выключены.");
+  } else {
+    const status = ctx.runtimeConfig.avatarEmojiEnabled ? "✅ включены" : "🔕 выключены";
+    await ctx.reply(
+      `🖼 Аватарки-эмодзи: ${status}\n\n` +
+        "Управление:\n" +
+        "/avataremoji on — включить\n" +
+        "/avataremoji off — выключить",
+    );
+  }
+});
+
 privateChat.command("panel", async (ctx) => {
   if (!(await requireAdmin(ctx))) return;
   await ctx.reply(await renderPanelText(ctx), {
@@ -198,6 +231,11 @@ async function renderPanelText(ctx: AppContext): Promise<string> {
   const translateStatus = ctx.runtimeConfig.russianTranslationEnabled
     ? "✅ включён"
     : "🔕 выключен";
+  const avatarEmojiStatus = !ctx.services.avatarEmoji
+    ? "🚫 недоступны"
+    : ctx.runtimeConfig.avatarEmojiEnabled
+      ? "✅ включены"
+      : "🔕 выключены";
   const cleanupStatus = ctx.settings.cacheCleanupEnabled
     ? `✅ каждые ${ctx.settings.cacheCleanupIntervalSeconds}с`
     : "🔕 выключена";
@@ -205,6 +243,7 @@ async function renderPanelText(ctx: AppContext): Promise<string> {
     "🛠 Панель управления\n\n" +
     `📋 Whitelist: ${whitelistStatus}\n` +
     `🇷🇺 Перевод на русский (beta): ${translateStatus}\n` +
+    `🖼 Аватарки-эмодзи: ${avatarEmojiStatus}\n` +
     `👥 В whitelist: ${allowedCount}\n` +
     `🗂 В кэше постов: ${cacheCount}\n` +
     `🗂 В кэше профилей: ${profileCacheCount}\n` +

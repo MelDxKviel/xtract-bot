@@ -256,7 +256,7 @@ async function resolveAvatarEmoji(
   avatarUrl: string | null | undefined,
 ): Promise<AvatarEmoji | undefined> {
   const service = ctx.services.avatarEmoji;
-  if (!service || !avatarUrl) return undefined;
+  if (!service || !ctx.runtimeConfig.avatarEmojiEnabled || !avatarUrl) return undefined;
   const id = await service.resolve(avatarUrl);
   return id ? { id, glyph: service.fallbackGlyph } : undefined;
 }

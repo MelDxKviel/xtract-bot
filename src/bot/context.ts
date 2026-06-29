@@ -23,6 +23,7 @@ export interface AppServices {
 export interface RuntimeConfig {
   whitelistEnabled: boolean;
   russianTranslationEnabled: boolean;
+  avatarEmojiEnabled: boolean;
 }
 
 export type AppContext = Context & {

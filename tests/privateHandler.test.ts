@@ -116,7 +116,11 @@ function inject(config: InjectConfig = {}): (ctx: AppContext) => void {
       tweetShare,
       profileShare,
     } as unknown as AppContext["services"];
-    ctx.runtimeConfig = { whitelistEnabled: true, russianTranslationEnabled: false };
+    ctx.runtimeConfig = {
+      whitelistEnabled: true,
+      russianTranslationEnabled: false,
+      avatarEmojiEnabled: false,
+    };
   };
 }
 

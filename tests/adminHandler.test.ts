@@ -14,6 +14,7 @@ interface InjectConfig {
   isAdmin?: boolean;
   clearAllCount?: number;
   clearExpiredCount?: number;
+  avatarEmojiAvailable?: boolean;
 }
 
 function inject(config: InjectConfig, calls: FakeCacheCalls, actions: string[]) {
@@ -22,6 +23,14 @@ function inject(config: InjectConfig, calls: FakeCacheCalls, actions: string[]) 
       access: { isAdmin: () => config.isAdmin ?? true },
       stats: {},
       tweetShare: {},
+      avatarEmoji: config.avatarEmojiAvailable
+        ? {
+            fallbackGlyph: "👤",
+            async resolve() {
+              return null;
+            },
+          }
+        : undefined,
     } as unknown as AppContext["services"];
     ctx.repositories = {
       tweetCache: {
@@ -48,7 +57,11 @@ function inject(config: InjectConfig, calls: FakeCacheCalls, actions: string[]) 
         },
       },
     } as unknown as AppContext["repositories"];
-    ctx.runtimeConfig = { whitelistEnabled: true, russianTranslationEnabled: false };
+    ctx.runtimeConfig = {
+      whitelistEnabled: true,
+      russianTranslationEnabled: false,
+      avatarEmojiEnabled: false,
+    };
   };
 }
 
@@ -103,6 +116,32 @@ describe("admin /clearcache", () => {
     expect(calls.clearAll).toBe(0);
     expect(calls.clearExpired).toBe(0);
     expect(actions).toEqual([]);
+    expect(String(h.lastCall("sendMessage")!.payload.text)).toContain("только администратору");
+  });
+});
+
+describe("admin /avataremoji", () => {
+  it("turns the feature on", async () => {
+    const { h } = harness({ isAdmin: true, avatarEmojiAvailable: true });
+    await h.handle(adminText("/avataremoji on"));
+    expect(String(h.lastCall("sendMessage")!.payload.text)).toContain("включены");
+  });
+
+  it("turns the feature off", async () => {
+    const { h } = harness({ isAdmin: true, avatarEmojiAvailable: true });
+    await h.handle(adminText("/avataremoji off"));
+    expect(String(h.lastCall("sendMessage")!.payload.text)).toContain("выключены");
+  });
+
+  it("reports unavailable when no sticker-set owner is configured", async () => {
+    const { h } = harness({ isAdmin: true, avatarEmojiAvailable: false });
+    await h.handle(adminText("/avataremoji on"));
+    expect(String(h.lastCall("sendMessage")!.payload.text)).toContain("недоступны");
+  });
+
+  it("refuses non-admins", async () => {
+    const { h } = harness({ isAdmin: false, avatarEmojiAvailable: true });
+    await h.handle(adminText("/avataremoji on"));
     expect(String(h.lastCall("sendMessage")!.payload.text)).toContain("только администратору");
   });
 });

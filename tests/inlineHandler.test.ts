@@ -94,6 +94,8 @@ interface InjectConfig {
   threadUnrollEnabled?: boolean;
   translator?: Translator;
   onProcess?: (options: { unrollThread?: boolean }) => void;
+  avatarEmojiEnabled?: boolean;
+  avatarEmoji?: AppContext["services"]["avatarEmoji"];
 }
 
 function inject(config: InjectConfig = {}): (ctx: AppContext) => void {
@@ -128,10 +130,12 @@ function inject(config: InjectConfig = {}): (ctx: AppContext) => void {
       stats: {},
       tweetShare,
       profileShare,
+      avatarEmoji: config.avatarEmoji,
     } as unknown as AppContext["services"];
     ctx.runtimeConfig = {
       whitelistEnabled: true,
       russianTranslationEnabled: config.translationEnabled ?? false,
+      avatarEmojiEnabled: config.avatarEmojiEnabled ?? false,
     };
     ctx.translator = translator;
   };
@@ -172,6 +176,12 @@ function chosenResult(
 
 function results(call: RecordedCall | undefined): Array<Record<string, unknown>> {
   return (call?.payload.results ?? []) as Array<Record<string, unknown>>;
+}
+
+// Rich-message edits carry their body under `rich_message.html`.
+function richHtmlOf(call: RecordedCall | undefined): string {
+  const richMessage = (call?.payload.rich_message ?? {}) as { html?: string };
+  return richMessage.html ?? "";
 }
 
 describe("inline query", () => {
@@ -223,6 +233,45 @@ describe("chosen inline result", () => {
     const h = harness({ result: successResult() });
     await h.handle(chosenResult(TWEET_URL, "tweet-123", null));
     expect(h.calls.length).toBe(0);
+  });
+
+  it("prepends the author avatar custom emoji when enabled", async () => {
+    const resolved: Array<string | null | undefined> = [];
+    const avatarEmoji = {
+      fallbackGlyph: "👤",
+      async resolve(url: string | null | undefined): Promise<string | null> {
+        resolved.push(url);
+        return url ? "emoji-1" : null;
+      },
+    } as unknown as AppContext["services"]["avatarEmoji"];
+    const h = harness({
+      result: successResult({ tweet: tweet({ authorAvatarUrl: "https://pbs.twimg.com/a.jpg" }) }),
+      avatarEmojiEnabled: true,
+      avatarEmoji,
+    });
+    await h.handle(chosenResult(TWEET_URL));
+    const html = richHtmlOf(h.lastCall("editMessageText"));
+    expect(html.startsWith('<tg-emoji emoji-id="emoji-1">👤</tg-emoji> ')).toBe(true);
+    expect(resolved).toContain("https://pbs.twimg.com/a.jpg");
+  });
+
+  it("does not resolve an avatar emoji when the feature is off", async () => {
+    let called = false;
+    const avatarEmoji = {
+      fallbackGlyph: "👤",
+      async resolve(): Promise<string | null> {
+        called = true;
+        return "emoji-1";
+      },
+    } as unknown as AppContext["services"]["avatarEmoji"];
+    const h = harness({
+      result: successResult({ tweet: tweet({ authorAvatarUrl: "https://pbs.twimg.com/a.jpg" }) }),
+      avatarEmojiEnabled: false,
+      avatarEmoji,
+    });
+    await h.handle(chosenResult(TWEET_URL));
+    expect(called).toBe(false);
+    expect(richHtmlOf(h.lastCall("editMessageText"))).not.toContain("tg-emoji");
   });
 
   it("does not unroll for the single-post result", async () => {
