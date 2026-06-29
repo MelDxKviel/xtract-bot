@@ -129,7 +129,11 @@ async function sendShareResult(ctx: AppContext, result: ShareResult): Promise<vo
   }
 
   const url = result.tweet?.url ?? result.normalizedUrl ?? "";
-  const avatarEmoji = await resolveAvatarEmoji(ctx, result.tweet?.authorAvatarUrl);
+  const avatarEmoji = await resolveAvatarEmoji(
+    ctx,
+    result.tweet?.authorUsername,
+    result.tweet?.authorAvatarUrl,
+  );
   await replyWithPost(ctx, result.post, originalPostButton(url), avatarEmoji);
 }
 
@@ -144,7 +148,11 @@ async function sendProfileResult(ctx: AppContext, result: ProfileShareResult): P
   }
 
   const url = result.profile?.url ?? result.normalizedUrl ?? "";
-  const avatarEmoji = await resolveAvatarEmoji(ctx, result.profile?.avatarUrl);
+  const avatarEmoji = await resolveAvatarEmoji(
+    ctx,
+    result.profile?.username,
+    result.profile?.avatarUrl,
+  );
   await replyWithPost(ctx, result.post, openProfileButton(url), avatarEmoji);
 }
 
@@ -153,15 +161,18 @@ interface AvatarEmoji {
   glyph: string;
 }
 
-// Best-effort: turn the avatar into a custom emoji to show inline. Returns
-// undefined when the feature is off or anything fails (it never throws).
+// Best-effort: turn the user's avatar into a custom emoji to show inline.
+// Returns undefined when the feature is off or anything fails (never throws).
 async function resolveAvatarEmoji(
   ctx: AppContext,
+  username: string | null | undefined,
   avatarUrl: string | null | undefined,
 ): Promise<AvatarEmoji | undefined> {
   const service = ctx.services.avatarEmoji;
-  if (!service || !ctx.runtimeConfig.avatarEmojiEnabled || !avatarUrl) return undefined;
-  const id = await service.resolve(avatarUrl);
+  if (!service || !ctx.runtimeConfig.avatarEmojiEnabled || !username || !avatarUrl) {
+    return undefined;
+  }
+  const id = await service.resolve(username, avatarUrl);
   return id ? { id, glyph: service.fallbackGlyph } : undefined;
 }
 

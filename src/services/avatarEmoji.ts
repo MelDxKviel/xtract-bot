@@ -12,6 +12,12 @@ const DEFAULT_TITLE_PREFIX = "Xtract avatars";
 const DEFAULT_TIMEOUT_MS = 8000;
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 
+/** A sticker as it lives in a set: its custom-emoji id plus its file id. */
+export interface StickerRef {
+  customEmojiId: string;
+  fileId: string;
+}
+
 /**
  * Thin abstraction over the bits of the Bot API the avatar-emoji service needs.
  * Keeping it small lets tests drive the service with an in-memory fake instead
@@ -20,19 +26,30 @@ const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 export interface StickerClient {
   /** The bot's own username, needed to build a valid sticker-set short name. */
   getBotUsername(): Promise<string>;
-  createSet(name: string, title: string, png: Uint8Array, glyph: string): Promise<void>;
-  addToSet(name: string, png: Uint8Array, glyph: string): Promise<void>;
-  /** `custom_emoji_id` of the most recently added sticker in the set. */
-  lastCustomEmojiId(name: string): Promise<string | null>;
+  /** Create a new set seeded with one sticker; returns that sticker's ref. */
+  createSet(
+    name: string,
+    title: string,
+    png: Uint8Array,
+    glyph: string,
+  ): Promise<StickerRef | null>;
+  /** Append a sticker to an existing set; returns the new sticker's ref. */
+  addToSet(name: string, png: Uint8Array, glyph: string): Promise<StickerRef | null>;
+  /** Remove a sticker (by file id) from its set. */
+  deleteSticker(fileId: string): Promise<void>;
 }
 
 export interface AvatarEmojiService {
   /**
-   * Return a custom-emoji id for the given avatar URL, creating one on first
-   * sight. Best-effort: any failure (download, image, Telegram) resolves to
-   * `null` so the caller simply sends the message without the avatar emoji.
+   * Return a stable custom-emoji id for the given X user, creating one on first
+   * sight and replacing it when their avatar changes. Best-effort: any failure
+   * (download, image, Telegram) resolves to `null` so the caller simply sends
+   * the message without the avatar emoji.
    */
-  resolve(avatarUrl: string | null | undefined): Promise<string | null>;
+  resolve(
+    username: string | null | undefined,
+    avatarUrl: string | null | undefined,
+  ): Promise<string | null>;
   /** Plain emoji shown wherever the custom emoji can't be rendered. */
   readonly fallbackGlyph: string;
 }
@@ -61,54 +78,93 @@ export function createAvatarEmojiService(deps: AvatarEmojiDeps): AvatarEmojiServ
     capacity = DEFAULT_CAPACITY,
   } = deps;
 
-  // Avatars are created one-at-a-time per URL to avoid two concurrent shares of
-  // the same handle each minting a sticker; in-flight work is shared via a map.
+  // Resolve one user at a time so two concurrent shares of the same handle don't
+  // each mint a sticker; in-flight work is shared via this map (keyed by user).
   const inFlight = new Map<string, Promise<string | null>>();
 
-  const create = async (avatarUrl: string): Promise<string | null> => {
-    const cached = await repository.getEmojiId(avatarUrl);
-    if (cached) return cached;
+  // The user's avatar changed: drop the old sticker and add the replacement to
+  // the same set, then repoint the row. Deleting first frees the slot so a full
+  // set can still take the new sticker; it's best-effort (the old one may be
+  // gone already), and the count nets out to zero so the set tracking is left
+  // untouched.
+  const replace = async (
+    username: string,
+    avatarUrl: string,
+    existing: { stickerFileId: string; setName: string },
+    png: Uint8Array,
+  ): Promise<string | null> => {
+    try {
+      await client.deleteSticker(existing.stickerFileId);
+    } catch (error) {
+      console.error("avatar_emoji delete old sticker failed", { username, error });
+    }
+    const ref = await client.addToSet(existing.setName, png, glyph);
+    if (!ref) return null;
+    await repository.updateEmoji(username, avatarUrl, ref.customEmojiId, ref.fileId);
+    return ref.customEmojiId;
+  };
 
-    const png = await resize(await fetchImage(avatarUrl));
-    const username = await client.getBotUsername();
-
+  // First time we've seen this user: add to a set with room, or roll a new one.
+  const create = async (
+    username: string,
+    avatarUrl: string,
+    png: Uint8Array,
+  ): Promise<string | null> => {
     const open = await repository.pickOpenSet(capacity);
     let setName: string;
+    let ref: StickerRef | null;
     if (open) {
       setName = open.name;
-      await client.addToSet(setName, png, glyph);
+      ref = await client.addToSet(setName, png, glyph);
     } else {
       const index = await repository.nextSetIndex();
-      setName = buildSetName(setPrefix, index, username);
-      await client.createSet(setName, `${titlePrefix} #${index + 1}`, png, glyph);
-      await repository.registerSet(setName, index);
+      setName = buildSetName(setPrefix, index, await client.getBotUsername());
+      ref = await client.createSet(setName, `${titlePrefix} #${index + 1}`, png, glyph);
+      if (ref) await repository.registerSet(setName, index);
     }
+    if (!ref) return null;
+    await repository.insertEmoji({
+      username,
+      avatarUrl,
+      customEmojiId: ref.customEmojiId,
+      stickerFileId: ref.fileId,
+      setName,
+    });
+    return ref.customEmojiId;
+  };
 
-    const emojiId = await client.lastCustomEmojiId(setName);
-    if (!emojiId) return null;
-    await repository.recordEmoji(avatarUrl, emojiId, setName);
-    return emojiId;
+  const run = async (username: string, avatarUrl: string): Promise<string | null> => {
+    const existing = await repository.getByUsername(username);
+    if (existing && existing.avatarUrl === avatarUrl) return existing.customEmojiId;
+
+    const png = await resize(await fetchImage(avatarUrl));
+    return existing
+      ? replace(username, avatarUrl, existing, png)
+      : create(username, avatarUrl, png);
   };
 
   return {
     fallbackGlyph: glyph,
 
-    async resolve(avatarUrl): Promise<string | null> {
-      if (!avatarUrl) return null;
-      const existing = inFlight.get(avatarUrl);
+    async resolve(username, avatarUrl): Promise<string | null> {
+      if (!username || !avatarUrl) return null;
+      const key = username.replace(/^@+/, "").toLowerCase();
+      if (!key) return null;
+
+      const existing = inFlight.get(key);
       if (existing) return existing;
 
       const task = (async () => {
         try {
-          return await create(avatarUrl);
+          return await run(key, avatarUrl);
         } catch (error) {
-          console.error("avatar_emoji resolve failed", { avatarUrl, error });
+          console.error("avatar_emoji resolve failed", { username: key, avatarUrl, error });
           return null;
         } finally {
-          inFlight.delete(avatarUrl);
+          inFlight.delete(key);
         }
       })();
-      inFlight.set(avatarUrl, task);
+      inFlight.set(key, task);
       return task;
     },
   };
@@ -156,6 +212,14 @@ export function createGrammyStickerClient(api: Api, ownerId: number): StickerCli
     emoji_list: [glyph],
   });
 
+  // The freshly added sticker is always the last one in the set.
+  const lastRef = async (name: string): Promise<StickerRef | null> => {
+    const set = await api.getStickerSet(name);
+    const last = set.stickers[set.stickers.length - 1];
+    if (!last?.custom_emoji_id) return null;
+    return { customEmojiId: last.custom_emoji_id, fileId: last.file_id };
+  };
+
   return {
     async getBotUsername(): Promise<string> {
       if (cachedUsername) return cachedUsername;
@@ -164,20 +228,20 @@ export function createGrammyStickerClient(api: Api, ownerId: number): StickerCli
       return cachedUsername;
     },
 
-    async createSet(name, title, png, glyph): Promise<void> {
+    async createSet(name, title, png, glyph): Promise<StickerRef | null> {
       await api.createNewStickerSet(ownerId, name, title, [sticker(png, glyph)], {
         sticker_type: "custom_emoji",
       });
+      return lastRef(name);
     },
 
-    async addToSet(name, png, glyph): Promise<void> {
+    async addToSet(name, png, glyph): Promise<StickerRef | null> {
       await api.addStickerToSet(ownerId, name, sticker(png, glyph));
+      return lastRef(name);
     },
 
-    async lastCustomEmojiId(name): Promise<string | null> {
-      const set = await api.getStickerSet(name);
-      const last = set.stickers[set.stickers.length - 1];
-      return last?.custom_emoji_id ?? null;
+    async deleteSticker(fileId): Promise<void> {
+      await api.deleteStickerFromSet(fileId);
     },
   };
 }

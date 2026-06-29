@@ -71,14 +71,20 @@ export const profileCache = pgTable("profile_cache", {
     .default(sql`now()`),
 });
 
-// Maps a unique source avatar URL to the custom emoji we created from it. Keyed
-// by URL so a changed avatar (new image URL) transparently gets a fresh emoji.
+// One row per X user (handle) → the custom emoji made from their avatar. Stores
+// the current avatar URL and the sticker's file id so a changed avatar can be
+// replaced in place, keeping a single emoji per user.
 export const avatarEmoji = pgTable("avatar_emoji", {
   id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
-  avatarUrl: text("avatar_url").notNull().unique(),
+  username: text("username").notNull().unique(),
+  avatarUrl: text("avatar_url").notNull(),
   customEmojiId: text("custom_emoji_id").notNull(),
+  stickerFileId: text("sticker_file_id").notNull(),
   setName: text("set_name").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .default(sql`now()`),
 });

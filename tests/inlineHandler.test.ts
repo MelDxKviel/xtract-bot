@@ -239,7 +239,10 @@ describe("chosen inline result", () => {
     const resolved: Array<string | null | undefined> = [];
     const avatarEmoji = {
       fallbackGlyph: "👤",
-      async resolve(url: string | null | undefined): Promise<string | null> {
+      async resolve(
+        _username: string | null | undefined,
+        url: string | null | undefined,
+      ): Promise<string | null> {
         resolved.push(url);
         return url ? "emoji-1" : null;
       },
