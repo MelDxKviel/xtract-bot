@@ -1,6 +1,6 @@
 import { InlineKeyboard } from "grammy";
 
-export const ORIGINAL_POST_LABEL = "🔗 Оригинальный пост";
+export const ORIGINAL_POST_LABEL = "Оригинальный пост в 𝕏";
 export const OPEN_PROFILE_LABEL = "👤 Открыть профиль";
 
 export function originalPostButton(url: string): InlineKeyboard {

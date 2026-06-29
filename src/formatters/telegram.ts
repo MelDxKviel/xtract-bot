@@ -6,7 +6,7 @@ export const CAPTION_LIMIT = 1024;
 // newline-to-<br> expansion done when rendering the rich message.
 export const RICH_MESSAGE_LIMIT = 32000;
 export const MAX_MEDIA = 10;
-export const ORIGINAL_POST_LABEL = "🔗 Оригинальный пост";
+export const ORIGINAL_POST_LABEL = "Оригинальный пост в 𝕏";
 
 const LEADING_MENTIONS_RE = /^(@[A-Za-z0-9_]{1,50}(?:\s+|$))+/;
 

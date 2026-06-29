@@ -34,12 +34,17 @@ export function buildRichMessage(post: TelegramPost): InputRichMessage {
   };
 }
 
+// The author header from the formatters starts with the 𝕏 brand mark.
+const BRAND_PREFIX = "𝕏 ";
+
 /**
- * Prepend a custom-emoji avatar to a Rich Message body. The `<tg-emoji>` tag
- * wraps a plain fallback glyph shown wherever the custom emoji can't render
- * (non-premium forwards, system notifications). Telegram only delivers the
- * custom emoji when the bot is eligible (owner has Premium, or a Fragment
- * username), so callers should retry without it if the send is rejected.
+ * Put a custom-emoji avatar at the start of a Rich Message body, in place of the
+ * leading 𝕏 brand mark (the brand now lives on the "original post" button). The
+ * `<tg-emoji>` tag wraps a plain fallback glyph shown wherever the custom emoji
+ * can't render (non-premium forwards, system notifications). Telegram only
+ * delivers the custom emoji when the bot is eligible (owner has Premium, or a
+ * Fragment username), so callers should retry without it if the send is
+ * rejected — and that retry keeps the 𝕏, since the avatar didn't make it in.
  */
 export function withAvatarEmoji(
   rich: InputRichMessage,
@@ -48,7 +53,10 @@ export function withAvatarEmoji(
 ): InputRichMessage {
   if (!("html" in rich) || typeof rich.html !== "string") return rich;
   const emoji = `<tg-emoji emoji-id="${escapeAttr(customEmojiId)}">${fallbackGlyph}</tg-emoji> `;
-  return { ...rich, html: `${emoji}${rich.html}` };
+  const body = rich.html.startsWith(BRAND_PREFIX)
+    ? rich.html.slice(BRAND_PREFIX.length)
+    : rich.html;
+  return { ...rich, html: `${emoji}${body}` };
 }
 
 function buildThreadRichMessage(post: TelegramPost): InputRichMessage {

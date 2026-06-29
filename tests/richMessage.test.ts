@@ -104,6 +104,14 @@ describe("withAvatarEmoji", () => {
     expect(withEmoji.html!.startsWith("<tg-emoji")).toBe(true);
   });
 
+  it("replaces the leading 𝕏 brand mark instead of duplicating it", () => {
+    const rich = buildRichMessage(formatTweet(makeTweetData()));
+    expect(rich.html!.startsWith("𝕏 ")).toBe(true);
+    const withEmoji = withAvatarEmoji(rich, "123", "👤");
+    expect(withEmoji.html).not.toContain("𝕏");
+    expect(withEmoji.html).toContain('</tg-emoji> <a href="https://x.com/user">');
+  });
+
   it("escapes the custom emoji id in the attribute", () => {
     const rich = buildRichMessage(formatTweet(makeTweetData()));
     const withEmoji = withAvatarEmoji(rich, 'evil"&<', "👤");
