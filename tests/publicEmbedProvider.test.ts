@@ -41,6 +41,7 @@ describe("PublicEmbedTweetProvider", () => {
             screen_name: "fillpackart",
             url: "https://x.com/fillpackart",
             name: "Фил Ранжин",
+            avatar_url: "https://pbs.twimg.com/profile_images/fillpackart.jpg",
           },
           created_at: "Sat Apr 25 09:27:25 +0000 2026",
           lang: "ru",
@@ -74,6 +75,7 @@ describe("PublicEmbedTweetProvider", () => {
     expect(tweet.url).toBe("https://x.com/fillpackart/status/2047970725802242311");
     expect(tweet.authorName).toBe("Фил Ранжин");
     expect(tweet.authorUsername).toBe("fillpackart");
+    expect(tweet.authorAvatarUrl).toBe("https://pbs.twimg.com/profile_images/fillpackart.jpg");
     expect(tweet.text).toContain("А твиттер тем временем");
     expect(tweet.text).toContain("\n\n");
     expect(tweet.lang).toBe("ru");
@@ -90,7 +92,11 @@ describe("PublicEmbedTweetProvider", () => {
       text: "Hello &amp; world",
       created_at: "2026-04-25T10:00:00Z",
       lang: "en",
-      user: { name: "Display Name", screen_name: "user" },
+      user: {
+        name: "Display Name",
+        screen_name: "user",
+        profile_image_url_https: "https://pbs.twimg.com/profile_images/user_normal.jpg",
+      },
       photos: [{ url: "https://pbs.twimg.com/media/photo.jpg", width: 640, height: 480 }],
       video: {
         poster: "https://pbs.twimg.com/media/poster.jpg",
@@ -132,6 +138,7 @@ describe("PublicEmbedTweetProvider", () => {
     expect(tweet.tweetId).toBe("123");
     expect(tweet.authorName).toBe("Display Name");
     expect(tweet.authorUsername).toBe("user");
+    expect(tweet.authorAvatarUrl).toBe("https://pbs.twimg.com/profile_images/user_normal.jpg");
     expect(tweet.text).toBe("Hello & world");
     expect(tweet.lang).toBe("en");
     expect(tweet.media[0]!.type).toBe("photo");

@@ -206,7 +206,8 @@ inlineComposer.on("chosen_inline_result", async (ctx) => {
     }
   }
 
-  await safeEditRich(ctx, inlineMessageId, post, button);
+  const avatarEmoji = await resolveAvatarEmoji(ctx, share.tweet?.authorAvatarUrl);
+  await safeEditRich(ctx, inlineMessageId, post, button, avatarEmoji);
 });
 
 async function handleChosenProfile(ctx: AppContext, inlineMessageId: string): Promise<void> {

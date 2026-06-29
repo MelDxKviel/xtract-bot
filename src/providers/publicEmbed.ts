@@ -320,6 +320,7 @@ function tweetFromPublicApi(
     authorName,
     authorUsername: username,
     authorUrl: publicApiAuthorUrl(data, username),
+    authorAvatarUrl: publicApiAuthorAvatar(data),
     text: publicApiText(data),
     createdAt: publicApiDatetime(data),
     media: mediaFromPublicApi(data),
@@ -411,6 +412,14 @@ function publicApiAuthorUrl(data: Record<string, any>, username: string): string
     return canonicalizeAuthorUrl(value);
   }
   return canonicalAuthorUrl(username);
+}
+
+// FxTwitter exposes `author.avatar_url`; VxTwitter uses `user_profile_image_url`.
+function publicApiAuthorAvatar(data: Record<string, any>): string | null {
+  const author = isRecord(data.author) ? (data.author as Record<string, any>) : {};
+  const value =
+    author.avatar_url ?? author.avatar ?? author.profile_image_url ?? data.user_profile_image_url;
+  return typeof value === "string" && /^https?:\/\//.test(value) ? value : null;
 }
 
 function publicApiTweetUrl(
@@ -559,6 +568,7 @@ function tweetFromSyndication(
     authorName,
     authorUsername: username,
     authorUrl: canonicalAuthorUrl(username),
+    authorAvatarUrl: avatarFromSyndicationUser(user),
     text: textFromSyndication(payload),
     createdAt: parseDatetime(payload.created_at),
     media: mediaFromSyndication(payload),
@@ -837,6 +847,12 @@ function usernameFromUser(user: Record<string, any>): string | null {
   const value = user.screen_name ?? user.username;
   if (typeof value !== "string" || !value.trim()) return null;
   return value.trim().replace(/^@+/, "");
+}
+
+// Syndication user objects expose the avatar as `profile_image_url_https`.
+function avatarFromSyndicationUser(user: Record<string, any>): string | null {
+  const value = user.profile_image_url_https ?? user.profile_image_url;
+  return typeof value === "string" && /^https?:\/\//.test(value) ? value : null;
 }
 
 function usernameFromUrl(url: string): string | null {

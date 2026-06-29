@@ -15,6 +15,7 @@ interface XApiUser {
   name?: string;
   username?: string;
   url?: string;
+  profile_image_url?: string;
 }
 
 interface XApiMedia {
@@ -70,7 +71,7 @@ export class XApiTweetProvider implements TweetProvider {
       "tweet.fields": "attachments,author_id,created_at,lang,referenced_tweets",
       expansions:
         "author_id,attachments.media_keys,attachments.poll_ids,referenced_tweets.id,referenced_tweets.id.author_id",
-      "user.fields": "name,username,url",
+      "user.fields": "name,username,url,profile_image_url",
       "media.fields": "duration_ms,height,preview_image_url,type,url,variants,width",
       "poll.fields": "options,voting_status",
     });
@@ -188,6 +189,7 @@ export class XApiTweetProvider implements TweetProvider {
         authorName: (user as XApiUser).name ?? username,
         authorUsername: username,
         authorUrl,
+        authorAvatarUrl: (user as XApiUser).profile_image_url ?? null,
         text: tweet.text ?? null,
         createdAt: tweet.created_at ? parseIsoDate(tweet.created_at) : null,
         media,

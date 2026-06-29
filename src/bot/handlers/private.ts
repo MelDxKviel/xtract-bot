@@ -128,7 +128,8 @@ async function sendShareResult(ctx: AppContext, result: ShareResult): Promise<vo
   }
 
   const url = result.tweet?.url ?? result.normalizedUrl ?? "";
-  await replyWithPost(ctx, result.post, originalPostButton(url));
+  const avatarEmoji = await resolveAvatarEmoji(ctx, result.tweet?.authorAvatarUrl);
+  await replyWithPost(ctx, result.post, originalPostButton(url), avatarEmoji);
 }
 
 async function sendProfileResult(ctx: AppContext, result: ProfileShareResult): Promise<void> {

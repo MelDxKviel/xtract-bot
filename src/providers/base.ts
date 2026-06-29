@@ -36,6 +36,8 @@ export interface TweetData {
   authorName: string;
   authorUsername: string;
   authorUrl: string;
+  /** Author avatar image URL, when the provider supplies one. */
+  authorAvatarUrl: string | null;
   text: string | null;
   createdAt: Date | null;
   media: TweetMedia[];
@@ -76,6 +78,7 @@ export function makeTweet(
     authorName: partial.authorName,
     authorUsername: partial.authorUsername,
     authorUrl: partial.authorUrl,
+    authorAvatarUrl: partial.authorAvatarUrl ?? null,
     text: partial.text ?? null,
     createdAt: partial.createdAt ?? null,
     media: partial.media ?? [],
@@ -108,6 +111,7 @@ export interface TweetDataPayload {
   author_name: string;
   author_username: string;
   author_url: string;
+  author_avatar_url: string | null;
   text: string | null;
   created_at: string | null;
   media: TweetMediaPayload[];
@@ -151,6 +155,7 @@ export function tweetToPayload(tweet: TweetData): TweetDataPayload {
     author_name: tweet.authorName,
     author_username: tweet.authorUsername,
     author_url: tweet.authorUrl,
+    author_avatar_url: tweet.authorAvatarUrl,
     text: tweet.text,
     created_at: tweet.createdAt ? tweet.createdAt.toISOString() : null,
     media: tweet.media.map(mediaToPayload),
@@ -169,6 +174,7 @@ export function tweetFromPayload(payload: TweetDataPayload): TweetData {
     authorName: String(payload.author_name),
     authorUsername: String(payload.author_username),
     authorUrl: String(payload.author_url),
+    authorAvatarUrl: payload.author_avatar_url ?? null,
     text: payload.text ?? null,
     createdAt: parseDatetime(payload.created_at),
     media: (payload.media ?? []).map(mediaFromPayload),
