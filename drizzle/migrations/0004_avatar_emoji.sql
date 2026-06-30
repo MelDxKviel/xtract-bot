@@ -1,17 +1,13 @@
 -- Avatar custom emoji: turn an X/Twitter avatar into a Telegram custom emoji so
--- it can be shown inline in a shared message. One row per X user (handle),
--- holding the current avatar URL and the sticker created from it. When the
--- user's avatar changes, the sticker is replaced in place and this row updated,
--- so a given user always maps to a single, current emoji.
+-- it can be shown inline in a shared message. `avatar_emoji` maps a unique
+-- source avatar URL to the `custom_emoji_id` of the sticker we created for it
+-- (keyed by URL, so a new avatar image naturally gets a fresh emoji).
 CREATE TABLE IF NOT EXISTS avatar_emoji (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  username TEXT NOT NULL UNIQUE,
-  avatar_url TEXT NOT NULL,
+  avatar_url TEXT NOT NULL UNIQUE,
   custom_emoji_id TEXT NOT NULL,
-  sticker_file_id TEXT NOT NULL,
   set_name TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- The bot-owned custom-emoji sets avatars are pooled into. Telegram caps a set
