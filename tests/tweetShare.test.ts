@@ -299,6 +299,38 @@ describe("thread unrolling", () => {
     expect(provider.calls).toEqual(["3"]);
   });
 
+  it("matches the thread author case-insensitively", async () => {
+    // Different providers (or older cache entries) may disagree on handle
+    // casing; X handles are case-insensitive, so the thread must still unroll.
+    const parent = makeTweetData({
+      tweetId: "2",
+      url: "https://x.com/User/status/2",
+      authorUsername: "User",
+      text: "second",
+    });
+    const root = makeTweetData({
+      tweetId: "3",
+      url: "https://x.com/user/status/3",
+      authorUsername: "user",
+      text: "third",
+      inReplyToTweetId: "2",
+      repliedToTweet: parent,
+    });
+    const provider = new FakeProvider(new Map([["3", root]]));
+    const { service } = makeService({ provider, threadUnrollEnabled: true });
+
+    const result = await service.processUrl(
+      {
+        tweetId: "3",
+        sourceUrl: "https://x.com/user/status/3",
+        normalizedUrl: "https://x.com/user/status/3",
+      },
+      OPTIONS,
+    );
+
+    expect(result.threadSize).toBe(2);
+  });
+
   it("respects the max-tweets cap", async () => {
     const provider = new FakeProvider(selfThread());
     const { service } = makeService({ provider, threadUnrollEnabled: true, threadMaxTweets: 2 });

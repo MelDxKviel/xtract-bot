@@ -128,7 +128,11 @@ export class PublicEmbedTweetProvider implements TweetProvider {
   }
 
   private async getFromSyndication(tweetId: string, sourceUrl: string): Promise<TweetData> {
-    const payload = await this.getJson(SYNDICATION_URL, { id: tweetId, lang: "en" });
+    const payload = await this.getJson(SYNDICATION_URL, {
+      id: tweetId,
+      lang: "en",
+      token: syndicationToken(tweetId),
+    });
     if (isTombstone(payload)) {
       throw new TweetProviderError("tweet is unavailable", { code: "private_or_deleted" });
     }
@@ -139,6 +143,7 @@ export class PublicEmbedTweetProvider implements TweetProvider {
         const parentPayload = await this.getJson(SYNDICATION_URL, {
           id: repliedToId,
           lang: "en",
+          token: syndicationToken(repliedToId),
         });
         if (!isTombstone(parentPayload)) {
           tweet.repliedToTweet = tweetFromSyndication(
@@ -220,12 +225,21 @@ export class PublicEmbedTweetProvider implements TweetProvider {
       clear();
     }
 
+    const isJsonBody = (response.headers.get("content-type") ?? "").includes("json");
     if (response.status === 404) {
       throw new TweetProviderError("tweet not found", { code: "not_found" });
     }
     if (response.status === 403) {
-      throw new TweetProviderError("tweet is private or unavailable", {
-        code: "private_or_deleted",
+      // A JSON 403 is the API's verdict on the tweet; an HTML/empty 403 is a
+      // CDN or bot-protection block — transient, so it must not be treated as
+      // terminal (terminal codes end up in the negative cache).
+      if (isJsonBody) {
+        throw new TweetProviderError("tweet is private or unavailable", {
+          code: "private_or_deleted",
+        });
+      }
+      throw new TweetProviderError("endpoint blocked the request (HTTP 403)", {
+        code: "provider_http_error",
       });
     }
     if (response.status === 429) {
@@ -510,6 +524,13 @@ function mediaFromPublicItem(item: Record<string, any>): TweetMedia | null {
     height: intOrNull(item.height) ?? nestedInt(item, "size", "height"),
     durationMs: intOrNull(item.duration_ms ?? item.duration_millis),
   };
+}
+
+// The syndication endpoint rejects requests without this checksum-style token
+// (HTTP 404 for every tweet), derived from the tweet id the same way official
+// embeds compute it.
+function syndicationToken(tweetId: string): string {
+  return ((Number(tweetId) / 1e15) * Math.PI).toString(36).replace(/(0+|\.)/g, "");
 }
 
 function tweetFromSyndication(

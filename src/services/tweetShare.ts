@@ -103,14 +103,19 @@ export function createTweetShareService(deps: Deps): TweetShareService {
   };
 
   // Walk up the reply chain while the parent is the same author (a self-thread),
-  // returning the tweets oldest → newest with the shared tweet last.
+  // returning the tweets oldest → newest with the shared tweet last. X handles
+  // are case-insensitive, and different providers/cached entries may disagree
+  // on casing, so compare them case-insensitively.
+  const sameAuthor = (a: TweetData, b: TweetData): boolean =>
+    a.authorUsername.toLowerCase() === b.authorUsername.toLowerCase();
+
   const unrollThread = async (root: TweetData): Promise<TweetData[]> => {
     if (!threadUnrollEnabled || threadMaxTweets <= 1) return [root];
     let parent: TweetData | null = root.repliedToTweet;
-    if (!parent || parent.authorUsername !== root.authorUsername) return [root];
+    if (!parent || !sameAuthor(parent, root)) return [root];
 
     const ancestors: TweetData[] = [];
-    while (parent && parent.authorUsername === root.authorUsername) {
+    while (parent && sameAuthor(parent, root)) {
       const current: TweetData = parent;
       ancestors.push(current);
       // Stop before fetching another ancestor once the cap (incl. root) is hit.
