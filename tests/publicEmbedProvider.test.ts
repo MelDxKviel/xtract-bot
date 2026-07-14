@@ -325,6 +325,83 @@ describe("PublicEmbedTweetProvider", () => {
     expect(tweet.url).toBe("https://x.com/fillpackart/status/2047970725802242311");
   });
 
+  it("sends the required token to the syndication endpoint", async () => {
+    const syndicationUrls: URL[] = [];
+    const handler: Handler = (input) => {
+      const url = new URL(input);
+      if (url.host !== "cdn.syndication.twimg.com") {
+        return new Response(null, { status: 503 });
+      }
+      syndicationUrls.push(url);
+      const tweetId = url.searchParams.get("id") ?? "";
+      if (tweetId === "222") {
+        return jsonResponse({
+          id_str: "222",
+          text: "Reply tweet",
+          user: { name: "Replier", screen_name: "replier" },
+          in_reply_to_status_id_str: "111",
+        });
+      }
+      return jsonResponse({
+        id_str: "111",
+        text: "Parent tweet",
+        user: { name: "Replier", screen_name: "replier" },
+      });
+    };
+    const provider = new PublicEmbedTweetProvider({ fetch: fetchFromHandler(handler) });
+    await provider.getTweet("222", "https://x.com/replier/status/222");
+
+    // Token formula: ((id / 1e15) * PI).toString(36) with zeros/dots stripped.
+    // The exact trailing digits of a base-36 double vary across JS engines, so
+    // compute the expectation with the same formula instead of hardcoding it.
+    const token = (id: string): string =>
+      ((Number(id) / 1e15) * Math.PI).toString(36).replace(/(0+|\.)/g, "");
+    expect(syndicationUrls).toHaveLength(2);
+    expect(syndicationUrls[0]!.searchParams.get("token")).toBe(token("222"));
+    expect(syndicationUrls[1]!.searchParams.get("token")).toBe(token("111"));
+    expect(syndicationUrls[0]!.searchParams.get("token")).toMatch(/^[0-9a-z]+$/);
+  });
+
+  it("treats a non-JSON 403 as a transient error, not private_or_deleted", async () => {
+    // CDN / bot-protection blocks answer 403 with an HTML page; that verdict is
+    // about the requester, not the tweet, so it must not be negative-cacheable.
+    const provider = new PublicEmbedTweetProvider({
+      fetch: fetchFromHandler(
+        () =>
+          new Response("<html>Access denied</html>", {
+            status: 403,
+            headers: { "Content-Type": "text/html" },
+          }),
+      ),
+    });
+    try {
+      await provider.getTweet("123", "https://x.com/user/status/123");
+      throw new Error("expected provider_http_error");
+    } catch (error) {
+      expect(error).toBeInstanceOf(TweetProviderError);
+      expect((error as TweetProviderError).code).toBe("provider_http_error");
+    }
+  });
+
+  it("keeps a JSON 403 as private_or_deleted", async () => {
+    const provider = new PublicEmbedTweetProvider({
+      fetch: fetchFromHandler(
+        () =>
+          new Response(JSON.stringify({ code: 403, message: "private" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+          }),
+      ),
+    });
+    try {
+      await provider.getTweet("123", "https://x.com/user/status/123");
+      throw new Error("expected private_or_deleted");
+    } catch (error) {
+      expect(error).toBeInstanceOf(TweetProviderError);
+      expect((error as TweetProviderError).code).toBe("private_or_deleted");
+    }
+  });
+
   it("keeps rate limit error code", async () => {
     const provider = new PublicEmbedTweetProvider({
       fetch: fetchFromHandler(() => new Response(null, { status: 429 })),
