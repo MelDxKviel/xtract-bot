@@ -1,6 +1,34 @@
-const SUPPORTED_HOSTS = new Set(["x.com", "twitter.com", "mobile.twitter.com", "vxtwitter.com"]);
-const URL_RE =
-  /(?<![\w@.])(?:[a-z][a-z0-9+.-]*:\/\/)?(?:www\.)?(?:mobile\.twitter\.com|vxtwitter\.com|x\.com|twitter\.com)\/[^\s<>()]+/gi;
+// Apex domains we accept: X/Twitter itself plus the "fixer" mirrors that repair
+// broken embeds by acting as drop-in replacements — same URL paths as x.com,
+// only the host changes (fxtwitter.com, fixupx.com, …). Any subdomain of these
+// (mobile.twitter.com, www.fxtwitter.com, g.fixupx.com, …) is accepted too,
+// since they keep the same /<user>/status/<id> and /<handle> path layout.
+const SUPPORTED_HOSTS = [
+  "x.com",
+  "twitter.com",
+  // BetterTwitFix / vxTwitter family
+  "vxtwitter.com",
+  "fixvx.com",
+  // FxEmbed / FxTwitter (FixupX) family
+  "fxtwitter.com",
+  "fixupx.com",
+  "twittpr.com",
+  "xfixup.com",
+  "pxtwitter.com",
+  // EmbedEZ
+  "twitterez.com",
+] as const;
+
+// Escape every regex metacharacter (including backslashes) so a host is matched
+// literally, even though the current allowlist only contains letters and dots.
+const HOST_ALTERNATION = SUPPORTED_HOSTS.map((host) =>
+  host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+).join("|");
+// Optional scheme, optional subdomain labels, a supported apex host, then a path.
+const URL_RE = new RegExp(
+  String.raw`(?<![\w@.])(?:[a-z][a-z0-9+.-]*:\/\/)?(?:[a-z0-9-]+\.)*(?:${HOST_ALTERNATION})\/[^\s<>()]+`,
+  "gi",
+);
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
 const TRAILING_PUNCTUATION = ".,;:!?)]}>'\"";
 
@@ -97,8 +125,10 @@ export function parseTweetUrl(rawUrl: string): ParsedTweetUrl | null {
     return null;
   }
 
-  const host = normalizeHost(parsed.hostname);
-  if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || !SUPPORTED_HOSTS.has(host)) {
+  if (
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+    !isSupportedHost(parsed.hostname)
+  ) {
     return null;
   }
 
@@ -149,8 +179,10 @@ export function parseProfileUrl(rawUrl: string): ParsedProfileUrl | null {
     return null;
   }
 
-  const host = normalizeHost(parsed.hostname);
-  if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || !SUPPORTED_HOSTS.has(host)) {
+  if (
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+    !isSupportedHost(parsed.hostname)
+  ) {
     return null;
   }
 
@@ -189,7 +221,9 @@ function safeDecode(value: string): string {
   }
 }
 
-function normalizeHost(host: string): string {
-  const lowered = host.toLowerCase().split(":")[0]!;
-  return lowered.startsWith("www.") ? lowered.slice(4) : lowered;
+function isSupportedHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().split(":")[0]!;
+  // Match a supported apex exactly, or any of its subdomains (mobile.*, www.*,
+  // g.*, d.* …). The leading dot ensures "notx.com" never matches "x.com".
+  return SUPPORTED_HOSTS.some((base) => host === base || host.endsWith(`.${base}`));
 }

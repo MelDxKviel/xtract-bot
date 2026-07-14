@@ -34,7 +34,7 @@ caches the result in PostgreSQL, and returns a neatly formatted message.
 
 ## ✨ Features
 
-- 🔗 **URL support** for `x.com`, `twitter.com`, `mobile.twitter.com`, `vxtwitter.com`
+- 🔗 **URL support** for `x.com`, `twitter.com`, and embed-fixer mirrors — `vxtwitter.com`, `fixvx.com`, `fxtwitter.com`, `fixupx.com`, `twittpr.com`, `xfixup.com`, `pxtwitter.com`, `twitterez.com` (and any subdomain of these, e.g. `mobile.twitter.com`)
 - 🧩 **Parses** `/status/<id>` and `/statuses/<id>` paths
 - 🧵 **Thread unrolling** — collects a self-reply chain into a single post
 - 🗳 **Polls** — renders options with vote counts and percentages

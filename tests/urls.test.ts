@@ -86,6 +86,54 @@ describe("parseTweetUrl", () => {
     expect(parsed).not.toBeNull();
     expect(parsed!.tweetId).toBe("42");
   });
+
+  it("parses status URLs on embed-fixer mirror hosts", () => {
+    const hosts = [
+      "vxtwitter.com",
+      "fixvx.com",
+      "fxtwitter.com",
+      "fixupx.com",
+      "twittpr.com",
+      "xfixup.com",
+      "pxtwitter.com",
+      "twitterez.com",
+    ];
+    for (const host of hosts) {
+      const parsed = parseTweetUrl(`https://${host}/user/status/1234567890`);
+      expect(parsed, host).not.toBeNull();
+      expect(parsed!.tweetId).toBe("1234567890");
+      expect(parsed!.normalizedUrl).toBe("https://x.com/user/status/1234567890");
+    }
+  });
+
+  it("accepts arbitrary subdomains of supported hosts", () => {
+    const urls = [
+      "https://mobile.twitter.com/user/status/55",
+      "https://www.fixupx.com/user/status/55",
+      "https://g.fxtwitter.com/user/status/55",
+      "https://d.fixupx.com/user/status/55",
+    ];
+    for (const url of urls) {
+      const parsed = parseTweetUrl(url);
+      expect(parsed, url).not.toBeNull();
+      expect(parsed!.tweetId).toBe("55");
+      expect(parsed!.normalizedUrl).toBe("https://x.com/user/status/55");
+    }
+  });
+
+  it("extracts a fixer-mirror url from surrounding text", () => {
+    const parsed = extractFirstTweetUrl("look at fixupx.com/user/status/321 nice one");
+    expect(parsed).not.toBeNull();
+    expect(parsed!.tweetId).toBe("321");
+    expect(parsed!.normalizedUrl).toBe("https://x.com/user/status/321");
+  });
+
+  it("rejects lookalike hosts that merely embed a supported apex", () => {
+    expect(parseTweetUrl("https://notfixupx.com/user/status/1")).toBeNull();
+    expect(parseTweetUrl("https://fixupx.com.evil.com/user/status/1")).toBeNull();
+    expect(extractFirstTweetUrl("see notfxtwitter.com/user/status/1")).toBeNull();
+    expect(extractFirstTweetUrl("see fixupx.com.evil.com/user/status/1")).toBeNull();
+  });
 });
 
 describe("parseProfileUrl", () => {
@@ -145,5 +193,38 @@ describe("parseProfileUrl", () => {
 
   it("does not treat a tweet URL as a profile when extracting", () => {
     expect(extractFirstProfileUrl("look https://x.com/user/status/42")).toBeNull();
+  });
+
+  it("parses profile URLs on embed-fixer mirror hosts", () => {
+    const hosts = [
+      "vxtwitter.com",
+      "fixvx.com",
+      "fxtwitter.com",
+      "fixupx.com",
+      "twittpr.com",
+      "xfixup.com",
+      "pxtwitter.com",
+      "twitterez.com",
+    ];
+    for (const host of hosts) {
+      const parsed = parseProfileUrl(`https://${host}/jack`);
+      expect(parsed, host).not.toBeNull();
+      expect(parsed!.username).toBe("jack");
+      expect(parsed!.normalizedUrl).toBe("https://x.com/jack");
+    }
+  });
+
+  it("accepts arbitrary subdomains of supported hosts for profiles", () => {
+    for (const url of ["https://mobile.twitter.com/jack", "https://www.fixupx.com/jack"]) {
+      const parsed = parseProfileUrl(url);
+      expect(parsed, url).not.toBeNull();
+      expect(parsed!.username).toBe("jack");
+      expect(parsed!.normalizedUrl).toBe("https://x.com/jack");
+    }
+  });
+
+  it("rejects profile lookalike hosts", () => {
+    expect(parseProfileUrl("https://notfixupx.com/jack")).toBeNull();
+    expect(parseProfileUrl("https://fixupx.com.evil.com/jack")).toBeNull();
   });
 });
