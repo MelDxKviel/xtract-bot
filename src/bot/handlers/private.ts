@@ -44,7 +44,8 @@ privateChat.command("help", async (ctx) => {
     "📨 Отправьте ссылку на пост X/Twitter в личный чат с ботом.\n" +
     "👤 Отправьте ссылку на профиль (<code>https://x.com/user</code>) — бот оформит " +
     "карточку профиля.\n" +
-    "✅ Поддерживаются: x.com, twitter.com, mobile.twitter.com, vxtwitter.com.\n\n" +
+    "✅ Поддерживаются: x.com, twitter.com и зеркала-фиксеры — vxtwitter, fixvx, " +
+    "fxtwitter, fixupx, twittpr, xfixup, pxtwitter, twitterez (можно с любым поддоменом).\n\n" +
     "🔍 <b>Inline режим:</b> введите " +
     "<code>@bot_username &lt;ссылка&gt;</code> в любом чате.\n\n" +
     "🆔 /id — покажет ваш Telegram ID.";

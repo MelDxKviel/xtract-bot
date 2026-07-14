@@ -34,7 +34,7 @@
 
 ## ✨ Возможности
 
-- 🔗 **Поддержка ссылок** `x.com`, `twitter.com`, `mobile.twitter.com`, `vxtwitter.com`
+- 🔗 **Поддержка ссылок** `x.com`, `twitter.com` и зеркал-фиксеров — `vxtwitter.com`, `fixvx.com`, `fxtwitter.com`, `fixupx.com`, `twittpr.com`, `xfixup.com`, `pxtwitter.com`, `twitterez.com` (и любых их поддоменов, напр. `mobile.twitter.com`)
 - 🧩 **Парсинг** `/status/<id>` и `/statuses/<id>`
 - 🧵 **Разворот тредов** — собирает цепочку самоответов в один пост
 - 🗳 **Опросы** — варианты с числом голосов и процентами
