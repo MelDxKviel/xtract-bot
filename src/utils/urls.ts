@@ -19,7 +19,11 @@ const SUPPORTED_HOSTS = [
   "twitterez.com",
 ] as const;
 
-const HOST_ALTERNATION = SUPPORTED_HOSTS.map((host) => host.replace(/\./g, "\\.")).join("|");
+// Escape every regex metacharacter (including backslashes) so a host is matched
+// literally, even though the current allowlist only contains letters and dots.
+const HOST_ALTERNATION = SUPPORTED_HOSTS.map((host) =>
+  host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+).join("|");
 // Optional scheme, optional subdomain labels, a supported apex host, then a path.
 const URL_RE = new RegExp(
   String.raw`(?<![\w@.])(?:[a-z][a-z0-9+.-]*:\/\/)?(?:[a-z0-9-]+\.)*(?:${HOST_ALTERNATION})\/[^\s<>()]+`,
