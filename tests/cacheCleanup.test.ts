@@ -11,7 +11,7 @@ describe("startCacheCleanup", () => {
     vi.useRealTimers();
   });
 
-  it("runs the cleanup on each interval until stopped", async () => {
+  it("runs immediately and on each interval until stopped", async () => {
     let runs = 0;
     const handle = startCacheCleanup({
       intervalMs: 1000,
@@ -21,30 +21,33 @@ describe("startCacheCleanup", () => {
       },
     });
 
-    expect(runs).toBe(0);
-    await vi.advanceTimersByTimeAsync(1000);
     expect(runs).toBe(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(runs).toBe(2);
     await vi.advanceTimersByTimeAsync(2000);
-    expect(runs).toBe(3);
+    expect(runs).toBe(4);
 
     handle.stop();
     await vi.advanceTimersByTimeAsync(5000);
-    expect(runs).toBe(3);
+    expect(runs).toBe(4);
   });
 
-  it("keeps ticking even when a pass throws", async () => {
+  it("retries after the startup cleanup fails", async () => {
     let runs = 0;
     const handle = startCacheCleanup({
       intervalMs: 1000,
       run: async () => {
         runs += 1;
-        throw new Error("boom");
+        if (runs === 1) throw new Error("boom");
+        return 0;
       },
     });
 
-    await vi.advanceTimersByTimeAsync(1000);
+    expect(runs).toBe(1);
     await vi.advanceTimersByTimeAsync(1000);
     expect(runs).toBe(2);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(runs).toBe(3);
     handle.stop();
   });
 

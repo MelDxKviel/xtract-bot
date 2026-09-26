@@ -29,7 +29,7 @@ export function cleanupExpiredCache(db: Database): Promise<number> {
 }
 
 /**
- * Run `run` on a fixed interval. The timer is unref'd so it never keeps the
+ * Run `run` immediately and on a fixed interval. The timer is unref'd so it never keeps the
  * process alive on its own, and failures are logged without crashing the loop.
  */
 export function startCacheCleanup({
@@ -50,6 +50,8 @@ export function startCacheCleanup({
     }
   };
 
+  // Purge existing expired rows after a restart/deploy without waiting a full interval.
+  void tick();
   const timer = setInterval(() => void tick(), intervalMs);
   // Don't let the cleanup timer keep the process alive during shutdown.
   (timer as unknown as { unref?: () => void }).unref?.();

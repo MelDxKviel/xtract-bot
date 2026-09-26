@@ -115,6 +115,15 @@ POLLING_ENABLED=true
 | `RATE_LIMIT_MAX_REQUESTS`    | `20`    | Fetches allowed per window before a user is told to slow down           |
 | `RATE_LIMIT_WINDOW_SECONDS`  | `60`    | Length of the rate-limit window                                         |
 
+### Automatic cache cleanup
+
+Expired tweet and profile cache entries are deleted immediately at startup and then every
+hour in a separate transaction. Cleanup is enabled by default, including with an existing
+`.env`: `CACHE_CLEANUP_ENABLED=true`, `CACHE_CLEANUP_INTERVAL_SECONDS=3600` (minimum `60`).
+Entries without an expiration time are preserved. Database errors are logged and retried
+at the next interval. After the next push to `main` and successful CI/CD, the restarted bot
+will begin cleanup automatically.
+
 ### Deployment mode
 
 By default the bot runs in **long polling** (`POLLING_ENABLED=true`). For
