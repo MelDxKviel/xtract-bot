@@ -231,8 +231,12 @@ export class XApiTweetProvider implements TweetProvider {
       };
     }
     if (type === "video" || type === "animated_gif") {
-      const url = this.bestVariantUrl(payload) ?? payload.preview_image_url;
-      if (!url) return null;
+      const url = this.bestVariantUrl(payload);
+      if (!url) {
+        throw new TweetProviderError("video response contains no MP4 variant", {
+          code: "provider_bad_response",
+        });
+      }
       return {
         type: type === "animated_gif" ? "gif" : "video",
         url,

@@ -501,12 +501,23 @@ function mediaFromPublicApi(data: Record<string, any>): TweetMedia[] {
     }
   }
 
-  return media;
+  return withoutVideoPreviews(media);
 }
 
 function mediaFromPublicItem(item: Record<string, any>): TweetMedia | null {
   const mediaTypeRaw = String(item.type ?? "").toLowerCase();
-  const url = mediaUrl(item) ?? firstStr(item, "video_url", "download_url");
+  const isVideo = ["video", "gif", "animated_gif"].includes(mediaTypeRaw);
+  const videoInfo = isRecord(item.video_info) ? item.video_info : {};
+  const url = isVideo
+    ? (bestVariantUrl(item.variants ?? videoInfo.variants) ??
+      firstStr(item, "video_url", "download_url") ??
+      mediaUrl(item))
+    : mediaUrl(item);
+  if (isVideo && (!url || looksLikeImageUrl(url))) {
+    throw new TweetProviderError("video response contains no playable URL", {
+      code: "provider_bad_response",
+    });
+  }
   if (!url) return null;
 
   let normalizedType: TweetMedia["type"];
@@ -519,7 +530,9 @@ function mediaFromPublicItem(item: Record<string, any>): TweetMedia | null {
   return {
     type: normalizedType,
     url,
-    previewUrl: firstStr(item, "thumbnail_url", "preview_url", "poster"),
+    previewUrl:
+      firstStr(item, "thumbnail_url", "preview_url", "poster") ??
+      (isVideo && mediaUrl(item) && looksLikeImageUrl(mediaUrl(item)!) ? mediaUrl(item) : null),
     width: intOrNull(item.width) ?? nestedInt(item, "size", "width"),
     height: intOrNull(item.height) ?? nestedInt(item, "size", "height"),
     durationMs: intOrNull(item.duration_ms ?? item.duration_millis),
@@ -664,7 +677,28 @@ function mediaFromSyndication(payload: Record<string, any>): TweetMedia[] {
   const video = payload.video;
   if (isRecord(video)) add(videoFromPayload(video));
 
-  return media;
+  return withoutVideoPreviews(media);
+}
+
+// Some endpoints list a video's poster again in their legacy photo arrays.
+// In inline mode that photo could otherwise become the only attached media.
+function withoutVideoPreviews(media: TweetMedia[]): TweetMedia[] {
+  const imageKey = (url: string): string => url.split("?")[0]!;
+  const previews = new Set(
+    media
+      .filter((item) => item.type !== "photo" && item.previewUrl)
+      .map((item) => imageKey(item.previewUrl!)),
+  );
+  return media.filter((item) => item.type !== "photo" || !previews.has(imageKey(item.url)));
+}
+
+function looksLikeImageUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === "pbs.twimg.com" || /\.(jpe?g|png|webp)(?:$)/i.test(parsed.pathname);
+  } catch {
+    return false;
+  }
 }
 
 function photoFromPayload(payload: Record<string, any>): TweetMedia | null {

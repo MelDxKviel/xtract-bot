@@ -13,6 +13,8 @@ export interface HarnessOptions {
   inject?: (ctx: AppContext) => void;
   /** Telegram methods that should reject with a GrammyError (to test fallbacks). */
   failMethods?: string[];
+  /** Reject selected payloads while allowing retries of the same method. */
+  failCall?: (call: RecordedCall) => boolean;
 }
 
 export interface Harness {
@@ -45,7 +47,7 @@ export function createHarness(options: HarnessOptions): Harness {
 
   const transformer = (async (_prev, method, payload) => {
     calls.push({ method, payload: (payload ?? {}) as Record<string, unknown> });
-    if (fail.has(method)) {
+    if (fail.has(method) || options.failCall?.(calls[calls.length - 1]!)) {
       return { ok: false, error_code: 400, description: `forced failure: ${method}` };
     }
     return { ok: true, result: resultFor(method) };

@@ -306,7 +306,7 @@ async function safeEditMedia(
     console.error("failed to edit inline media", error);
   }
 
-  if (item.previewUrl) {
+  if (item.type === "photo" && item.previewUrl) {
     try {
       await ctx.api.editMessageMediaInline(
         inlineMessageId,
@@ -326,7 +326,9 @@ async function safeEditMedia(
     }
   }
 
-  await safeEditText(ctx, inlineMessageId, caption, replyMarkup);
+  const warning =
+    item.type !== "photo" ? "\n\n⚠️ Не удалось отправить видео. Откройте оригинал." : "";
+  await safeEditText(ctx, inlineMessageId, caption + warning, replyMarkup);
 }
 
 function inputMedia(

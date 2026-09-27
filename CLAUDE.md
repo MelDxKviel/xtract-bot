@@ -106,7 +106,7 @@ Plain `loadSettings(env)` function — no global cache, accepts an env dictionar
 
 ### Media Sending Strategy (private chat)
 
-`src/bot/handlers/private.ts` first tries `replyWithRichMessage` — a Rich Message (Bot API 9.x) whose body is the tweet text and whose media is a `<tg-slideshow>` carousel (built by `src/formatters/richMessage.ts`). If that throws a `GrammyError`, it falls back to the legacy ladder: `replyWithMediaGroup` with direct URLs → `replyWithMediaGroup` with preview thumbnails → individual items one by one → plain text fallback. Each step catches `GrammyError` and falls through.
+`src/bot/handlers/private.ts` first tries `replyWithRichMessage` — a Rich Message whose body is the tweet text and whose media is a `<tg-slideshow>` carousel (built by `src/formatters/richMessage.ts`). If that throws a `GrammyError`, it falls back to `replyWithMediaGroup` with direct URLs, then individual items. Thumbnail retries apply only to photos and all-photo albums. If a video/GIF URL is rejected, `src/services/videoDownload.ts` downloads the MP4 from `video.twimg.com` (30s timeout, 50 MB cap, no redirects) and retries as an upload. Failed videos produce a text warning with the original-post button; they are never replaced by posters. Inline edits cannot upload new files, so they keep the video URL or fall back to text with the same warning.
 
 The bot installs an API transformer that sets `parse_mode: "HTML"` on `sendMessage`, `editMessageText`, and `editMessageCaption` unless the caller overrides it. Rich Message payloads (which carry a `rich_message` field instead of `text`) are skipped, since `parse_mode` only applies to plain text/caption.
 

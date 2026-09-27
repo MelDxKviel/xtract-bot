@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { InputFile } from "grammy";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AppContext } from "@/bot/context";
 import { privateComposer } from "@/bot/handlers/private";
@@ -148,6 +149,8 @@ function harness(
 const TWEET_URL = "https://x.com/user/status/123";
 const PROFILE_URL = "https://x.com/user";
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe("private handler", () => {
   it("greets on /start", async () => {
     const h = harness();
@@ -212,6 +215,149 @@ describe("private handler", () => {
     const reply = h.lastCall("sendMessage");
     expect(reply).toBeDefined();
     expect(String(reply!.payload.text)).toContain("hello world");
+  });
+
+  it.each(["video", "gif"] as const)("uploads %s when Telegram rejects its URL", async (type) => {
+    const fetch = vi.fn(
+      async () =>
+        new Response(new Uint8Array([1, 2, 3]), {
+          headers: { "content-type": "video/mp4" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const data = tweet({
+      media: [
+        makeMedia({
+          type,
+          url: "https://video.twimg.com/video.mp4",
+          previewUrl: "https://pbs.twimg.com/preview.jpg",
+        }),
+      ],
+    });
+    const method = type === "video" ? "sendVideo" : "sendAnimation";
+    const h = harness(
+      { result: successResult({ tweet: data }) },
+      {
+        failMethods: ["sendRichMessage"],
+        failCall: (call) =>
+          call.method === method &&
+          typeof call.payload[type === "video" ? "video" : "animation"] === "string",
+      },
+    );
+    await h.handle(privateText(TWEET_URL));
+    const calls = h.callsTo(method);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.payload[type === "video" ? "video" : "animation"]).toBeInstanceOf(InputFile);
+    expect(calls[1]!.payload.caption).toContain("hello world");
+    expect(calls[1]!.payload.reply_markup).toBeDefined();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(h.callsTo("sendPhoto")).toHaveLength(0);
+    expect(h.callsTo("sendMessage")).toHaveLength(0);
+  });
+
+  it("tries album videos individually instead of sending an album of posters", async () => {
+    const data = tweet({
+      media: ["a", "b"].map((name) =>
+        makeMedia({
+          type: "video",
+          url: `https://video.twimg.com/${name}.mp4`,
+          previewUrl: `https://pbs.twimg.com/${name}.jpg`,
+        }),
+      ),
+    });
+    const h = harness(
+      { result: successResult({ tweet: data }) },
+      {
+        failMethods: ["sendRichMessage", "sendMediaGroup"],
+      },
+    );
+    await h.handle(privateText(TWEET_URL));
+    expect(h.callsTo("sendMediaGroup")).toHaveLength(1);
+    expect(h.callsTo("sendVideo")).toHaveLength(2);
+    expect(h.callsTo("sendPhoto")).toHaveLength(0);
+  });
+
+  it("reports a missing video even when the photo in a mixed album succeeds", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 403 })),
+    );
+    const data = tweet({
+      media: [
+        makeMedia({ type: "photo", url: "https://pbs.twimg.com/photo.jpg" }),
+        makeMedia({
+          type: "video",
+          url: "https://video.twimg.com/video.mp4",
+          previewUrl: "https://pbs.twimg.com/preview.jpg",
+        }),
+      ],
+    });
+    const h = harness(
+      { result: successResult({ tweet: data }) },
+      {
+        failMethods: ["sendRichMessage", "sendMediaGroup", "sendVideo"],
+      },
+    );
+    await h.handle(privateText(TWEET_URL));
+    expect(h.callsTo("sendMediaGroup")).toHaveLength(1);
+    expect(h.callsTo("sendPhoto")).toHaveLength(1);
+    expect(h.lastCall("sendPhoto")!.payload.photo).toBe("https://pbs.twimg.com/photo.jpg");
+    expect(h.lastCall("sendMessage")!.payload.text).toContain("Не удалось отправить видео");
+    expect(h.lastCall("sendMessage")!.payload.reply_markup).toBeDefined();
+  });
+
+  it("reports upload failure without sending the video's poster", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(new Uint8Array([1, 2, 3]), {
+            headers: { "content-type": "video/mp4" },
+          }),
+      ),
+    );
+    const data = tweet({
+      media: [
+        makeMedia({
+          type: "video",
+          url: "https://video.twimg.com/video.mp4",
+          previewUrl: "https://pbs.twimg.com/preview.jpg",
+        }),
+      ],
+    });
+    const h = harness(
+      { result: successResult({ tweet: data }) },
+      {
+        failMethods: ["sendRichMessage", "sendVideo"],
+      },
+    );
+    await h.handle(privateText(TWEET_URL));
+    expect(h.callsTo("sendVideo")).toHaveLength(2);
+    expect(h.callsTo("sendPhoto")).toHaveLength(0);
+    expect(h.lastCall("sendMessage")!.payload.text).toContain("Не удалось отправить видео");
+  });
+
+  it("still retries thumbnails for albums containing only photos", async () => {
+    const data = tweet({
+      media: ["a", "b"].map((name) =>
+        makeMedia({
+          type: "photo",
+          url: `https://pbs.twimg.com/${name}.jpg`,
+          previewUrl: `https://pbs.twimg.com/${name}-small.jpg`,
+        }),
+      ),
+    });
+    const h = harness(
+      { result: successResult({ tweet: data }) },
+      {
+        failMethods: ["sendRichMessage"],
+        failCall: (call) =>
+          call.method === "sendMediaGroup" && JSON.stringify(call.payload).includes("a.jpg"),
+      },
+    );
+    await h.handle(privateText(TWEET_URL));
+    expect(h.callsTo("sendMediaGroup")).toHaveLength(2);
+    expect(h.callsTo("sendPhoto")).toHaveLength(0);
   });
 
   it("shares a profile for a bare handle URL", async () => {

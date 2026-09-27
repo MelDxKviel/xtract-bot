@@ -8,6 +8,7 @@ import type { TelegramPost } from "@/formatters/telegram";
 import type { TweetMedia } from "@/providers/base";
 import type { ProfileShareResult } from "@/services/profileShare";
 import type { ShareResult } from "@/services/tweetShare";
+import { downloadVideo } from "@/services/videoDownload";
 import { extractFirstProfileUrl, extractFirstTweetUrl } from "@/utils/urls";
 
 const INVALID_LINK_TEXT =
@@ -201,6 +202,7 @@ async function sendMedia(
       return;
     } catch (error) {
       if (!(error instanceof GrammyError)) throw error;
+      console.error("failed to send media group", error);
     }
 
     const previewGroup = previewInputGroup(media, options.captionGroup);
@@ -216,12 +218,15 @@ async function sendMedia(
 
   let captionSent = false;
   let anySent = false;
+  let videoFailed = false;
   for (const item of media) {
     const itemCaption = captionSent ? null : options.caption;
     const itemMarkup = captionSent ? null : options.replyMarkup;
     if (await trySendOne(ctx, item, itemCaption, itemMarkup)) {
       anySent = true;
       if (itemCaption !== null) captionSent = true;
+    } else if (item.type !== "photo") {
+      videoFailed = true;
     }
   }
 
@@ -229,6 +234,11 @@ async function sendMedia(
     await ctx.reply(options.fallbackText, {
       parse_mode: "HTML",
       link_preview_options: DISABLED_LINK_PREVIEW,
+      reply_markup: options.replyMarkup,
+    });
+  }
+  if (videoFailed) {
+    await ctx.reply("⚠️ Не удалось отправить видео. Откройте оригинал.", {
       reply_markup: options.replyMarkup,
     });
   }
@@ -245,6 +255,24 @@ async function trySendOne(
     return true;
   } catch (error) {
     if (!(error instanceof GrammyError)) throw error;
+    console.error(`failed to send ${item.type} by URL`, error);
+  }
+  if (item.type !== "photo") {
+    let file: InputFile;
+    try {
+      file = await downloadVideo(item.url);
+    } catch (error) {
+      console.error("failed to download video for upload", error);
+      return false;
+    }
+    try {
+      await sendSingleMedia(ctx, item, caption, replyMarkup, file);
+      return true;
+    } catch (error) {
+      if (!(error instanceof GrammyError)) throw error;
+      console.error(`failed to upload ${item.type}`, error);
+    }
+    return false;
   }
   if (item.previewUrl) {
     try {
@@ -266,10 +294,11 @@ async function sendSingleMedia(
   item: TweetMedia,
   caption: string | null,
   replyMarkup: InlineKeyboard | null,
+  source: string | InputFile = item.url,
 ): Promise<void> {
   const parseMode = caption ? ("HTML" as const) : undefined;
   if (item.type === "photo") {
-    await ctx.replyWithPhoto(item.url, {
+    await ctx.replyWithPhoto(source, {
       caption: caption ?? undefined,
       parse_mode: parseMode,
       reply_markup: replyMarkup ?? undefined,
@@ -277,7 +306,7 @@ async function sendSingleMedia(
     return;
   }
   if (item.type === "gif") {
-    await ctx.replyWithAnimation(item.url, {
+    await ctx.replyWithAnimation(source, {
       caption: caption ?? undefined,
       parse_mode: parseMode,
       width: item.width ?? undefined,
@@ -287,12 +316,13 @@ async function sendSingleMedia(
     });
     return;
   }
-  await ctx.replyWithVideo(item.url, {
+  await ctx.replyWithVideo(source, {
     caption: caption ?? undefined,
     parse_mode: parseMode,
     width: item.width ?? undefined,
     height: item.height ?? undefined,
     duration: durationSeconds(item.durationMs) ?? undefined,
+    supports_streaming: true,
     reply_markup: replyMarkup ?? undefined,
   });
 }
@@ -321,16 +351,11 @@ function inputGroupMedia(
 }
 
 function previewInputGroup(media: TweetMedia[], caption: string): InputMediaPhoto[] | null {
+  // Retrying photo thumbnails is fine, but must never turn a video album into photos.
+  if (media.some((item) => item.type !== "photo")) return null;
   const items: InputMediaPhoto[] = [];
   for (const item of media) {
-    let url: string;
-    if (item.type === "photo") {
-      url = item.previewUrl ?? item.url;
-    } else if (item.previewUrl) {
-      url = item.previewUrl;
-    } else {
-      return null;
-    }
+    const url = item.previewUrl ?? item.url;
     const isFirst = items.length === 0;
     items.push({
       type: "photo",

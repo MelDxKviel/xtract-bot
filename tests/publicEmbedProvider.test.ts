@@ -22,6 +22,133 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 }
 
 describe("PublicEmbedTweetProvider", () => {
+  it("uses the playable video URL and removes its duplicate poster", async () => {
+    const poster = "https://pbs.twimg.com/ext_tw_video_thumb/preview.jpg";
+    const provider = new PublicEmbedTweetProvider({
+      fetch: fetchFromHandler(() =>
+        jsonResponse({
+          code: 200,
+          tweet: {
+            id: "123",
+            text: "video",
+            author: { screen_name: "user", name: "User" },
+            media_extended: [
+              { type: "video", url: poster, video_url: "https://video.twimg.com/video.mp4" },
+            ],
+            mediaURLs: [`${poster}?name=small`],
+          },
+        }),
+      ),
+    });
+    const tweet = await provider.getTweet("123", "https://x.com/user/status/123");
+    expect(tweet.media).toHaveLength(1);
+    expect(tweet.media[0]).toMatchObject({
+      type: "video",
+      url: "https://video.twimg.com/video.mp4",
+      previewUrl: poster,
+    });
+  });
+
+  it("uses the best MP4 variant instead of an image URL", async () => {
+    const provider = new PublicEmbedTweetProvider({
+      fetch: fetchFromHandler(() =>
+        jsonResponse({
+          code: 200,
+          tweet: {
+            id: "123",
+            text: "video",
+            author: { screen_name: "user", name: "User" },
+            media: {
+              all: [
+                {
+                  type: "video",
+                  url: "https://pbs.twimg.com/preview.jpg",
+                  variants: [
+                    {
+                      content_type: "video/mp4",
+                      bitrate: 100,
+                      url: "https://video.twimg.com/low.mp4",
+                    },
+                    {
+                      content_type: "video/mp4",
+                      bitrate: 200,
+                      url: "https://video.twimg.com/high.mp4",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    });
+    const tweet = await provider.getTweet("123", "https://x.com/user/status/123");
+    expect(tweet.media[0]!.url).toBe("https://video.twimg.com/high.mp4");
+  });
+
+  it("tries another provider when a video response contains only a poster", async () => {
+    const calls: string[] = [];
+    const provider = new PublicEmbedTweetProvider({
+      fetch: fetchFromHandler((input) => {
+        const host = new URL(input).host;
+        calls.push(host);
+        return jsonResponse({
+          code: 200,
+          tweet: {
+            id: "123",
+            text: "video",
+            author: { screen_name: "user", name: "User" },
+            media: {
+              all: [
+                {
+                  type: "video",
+                  url:
+                    host === "api.fxtwitter.com"
+                      ? "https://pbs.twimg.com/preview.jpg"
+                      : "https://video.twimg.com/video.mp4",
+                },
+              ],
+            },
+          },
+        });
+      }),
+    });
+    const tweet = await provider.getTweet("123", "https://x.com/user/status/123");
+    expect(calls).toEqual(["api.fxtwitter.com", "api.vxtwitter.com"]);
+    expect(tweet.media[0]).toMatchObject({
+      type: "video",
+      url: "https://video.twimg.com/video.mp4",
+    });
+  });
+
+  it("removes a syndication poster listed before its video while preserving real photos", async () => {
+    const poster = "https://pbs.twimg.com/preview.jpg";
+    const provider = new PublicEmbedTweetProvider({
+      fetch: fetchFromHandler((input) => {
+        if (new URL(input).host !== "cdn.syndication.twimg.com")
+          return new Response(null, { status: 503 });
+        return jsonResponse({
+          id_str: "123",
+          text: "video",
+          user: { screen_name: "user", name: "User" },
+          photos: [
+            { url: `${poster}?name=small` },
+            { url: "https://pbs.twimg.com/real-photo.jpg" },
+          ],
+          video: {
+            poster,
+            variants: [{ content_type: "video/mp4", url: "https://video.twimg.com/video.mp4" }],
+          },
+        });
+      }),
+    });
+    const tweet = await provider.getTweet("123", "https://x.com/user/status/123");
+    expect(tweet.media.map((item) => item.url)).toEqual([
+      "https://pbs.twimg.com/real-photo.jpg",
+      "https://video.twimg.com/video.mp4",
+    ]);
+  });
+
   it("reads fxtwitter payload first", async () => {
     const calls: string[] = [];
     const handler: Handler = (input) => {

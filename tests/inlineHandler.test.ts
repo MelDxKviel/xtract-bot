@@ -4,13 +4,13 @@ import type { AppContext } from "@/bot/context";
 import { inlineComposer } from "@/bot/handlers/inline";
 import { formatProfile } from "@/formatters/profile";
 import { formatTweet } from "@/formatters/telegram";
-import { makeTweet, type TweetData } from "@/providers/base";
+import { makeMedia, makeTweet, type TweetData } from "@/providers/base";
 import { makeProfile, type ProfileData } from "@/providers/profileBase";
 import type { ProfileShareResult } from "@/services/profileShare";
 import type { ShareResult } from "@/services/tweetShare";
 import type { Translator } from "@/services/translation";
 
-import { createHarness, type RecordedCall } from "./support/botHarness";
+import { createHarness, type HarnessOptions, type RecordedCall } from "./support/botHarness";
 
 const TWEET_URL = "https://x.com/user/status/123";
 
@@ -137,10 +137,14 @@ function inject(config: InjectConfig = {}): (ctx: AppContext) => void {
   };
 }
 
-function harness(config: InjectConfig = {}): ReturnType<typeof createHarness> {
+function harness(
+  config: InjectConfig = {},
+  options: Partial<HarnessOptions> = {},
+): ReturnType<typeof createHarness> {
   return createHarness({
     register: (bot) => bot.use(inlineComposer),
     inject: inject(config),
+    ...options,
   });
 }
 
@@ -213,6 +217,55 @@ describe("inline query", () => {
 });
 
 describe("chosen inline result", () => {
+  it.each(["video", "gif"] as const)(
+    "never replaces rejected inline %s with a poster",
+    async (type) => {
+      const data = tweet({
+        media: [
+          makeMedia({
+            type,
+            url: "https://video.twimg.com/video.mp4",
+            previewUrl: "https://pbs.twimg.com/preview.jpg",
+          }),
+        ],
+      });
+      const h = harness(
+        { result: successResult({ tweet: data }) },
+        {
+          failCall: (call) =>
+            (call.method === "editMessageText" && "rich_message" in call.payload) ||
+            call.method === "editMessageMedia",
+        },
+      );
+      await h.handle(chosenResult(TWEET_URL));
+      const media = h.callsTo("editMessageMedia");
+      expect(media).toHaveLength(1);
+      expect(media[0]!.payload.media).toMatchObject({
+        type: type === "gif" ? "animation" : "video",
+      });
+      expect(h.lastCall("editMessageText")!.payload.text).toContain("Не удалось отправить видео");
+      expect(h.lastCall("editMessageText")!.payload.reply_markup).toBeDefined();
+    },
+  );
+
+  it("keeps inline video when only the rich message is rejected", async () => {
+    const data = tweet({
+      media: [makeMedia({ type: "video", url: "https://video.twimg.com/video.mp4" })],
+    });
+    const h = harness(
+      { result: successResult({ tweet: data }) },
+      {
+        failCall: (call) => call.method === "editMessageText" && "rich_message" in call.payload,
+      },
+    );
+    await h.handle(chosenResult(TWEET_URL));
+    expect(h.lastCall("editMessageMedia")!.payload.media).toMatchObject({
+      type: "video",
+      media: data.media[0]!.url,
+    });
+    expect(h.callsTo("editMessageText")).toHaveLength(1);
+  });
+
   it("edits the placeholder into a rich message on success", async () => {
     const h = harness({ result: successResult() });
     await h.handle(chosenResult(TWEET_URL));
