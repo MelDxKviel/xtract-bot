@@ -27,11 +27,14 @@
     "@types/node": "^22.18.13",
     "@typescript-eslint/eslint-plugin": "^8.59.3",
     "@typescript-eslint/parser": "^8.59.3",
-    "drizzle-kit": "^0.31.10",
+    "drizzle-kit": "^0.31.11",
     "eslint": "^9.39.4",
     "prettier": "^3.6.3",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "esbuild": "^0.28.2"
   },
   "engines": {
     "bun": ">=1.1.0"
