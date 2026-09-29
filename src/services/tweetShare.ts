@@ -1,3 +1,4 @@
+import { safeError } from "@/logging";
 import { formatThread, formatTweet, type TelegramPost } from "@/formatters/telegram";
 import { TweetProviderError, type TweetData, type TweetProvider } from "@/providers/base";
 import type { ShareEventRepository } from "@/repositories/shareEvents";
@@ -240,7 +241,7 @@ export function createTweetShareService(deps: Deps): TweetShareService {
           return recordError(parsed, options, error.code, started);
         }
 
-        console.error("tweet_share unexpected error", error);
+        console.error("tweet_share unexpected error", safeError(error));
         return recordError(parsed, options, "unexpected_error", started);
       }
     },

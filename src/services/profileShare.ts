@@ -1,3 +1,4 @@
+import { safeError } from "@/logging";
 import { formatProfile } from "@/formatters/profile";
 import type { TelegramPost } from "@/formatters/telegram";
 import { TweetProviderError } from "@/providers/base";
@@ -181,7 +182,7 @@ export function createProfileShareService(deps: Deps): ProfileShareService {
           return recordError(parsed, options, error.code, started);
         }
 
-        console.error("profile_share unexpected error", error);
+        console.error("profile_share unexpected error", safeError(error));
         return recordError(parsed, options, "unexpected_error", started);
       }
     },

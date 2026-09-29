@@ -47,7 +47,8 @@ export interface FormatOptions {
 const QUOTE_COLLAPSE_LIMIT = 200;
 
 export function formatTweet(tweet: TweetData, options: FormatOptions = {}): TelegramPost {
-  const media = tweet.media.slice(0, MAX_MEDIA);
+  const safeMedia = sanitizeMedia(tweet.media);
+  const media = safeMedia.slice(0, MAX_MEDIA);
   const linkHtml = originalPostLinkHtml(tweet.url);
   const suffixLen = "\n\n".length + linkHtml.length;
   return {
@@ -56,7 +57,7 @@ export function formatTweet(tweet: TweetData, options: FormatOptions = {}): Tele
     captionHtml: renderTweetHtml(tweet, CAPTION_LIMIT - suffixLen, options),
     linkHtml,
     media,
-    extraMediaCount: Math.max(0, tweet.media.length - MAX_MEDIA),
+    extraMediaCount: Math.max(0, safeMedia.length - MAX_MEDIA),
   };
 }
 
@@ -83,7 +84,7 @@ export function formatThread(
   // 32k char / 50 media limits while interleaving.
   const segments: TelegramThreadSegment[] = tweets.map((tweet) => ({
     html: threadBodyHtml(tweet, RICH_MESSAGE_LIMIT, true),
-    media: tweet.media,
+    media: sanitizeMedia(tweet.media),
   }));
   return {
     html: renderThreadHtml(tweets, MESSAGE_LIMIT - suffixLen, options),
@@ -98,20 +99,29 @@ export function formatThread(
 }
 
 export function originalPostLinkHtml(url: string): string {
-  return `<a href="${escapeAttr(url)}">${ORIGINAL_POST_LABEL}</a>`;
+  return anchorHtml(url, ORIGINAL_POST_LABEL);
 }
 
 function collectThreadMedia(tweets: readonly TweetData[]): TweetMedia[] {
   const media: TweetMedia[] = [];
   const seen = new Set<string>();
   for (const tweet of tweets) {
-    for (const item of tweet.media) {
+    for (const item of sanitizeMedia(tweet.media)) {
       if (seen.has(item.url)) continue;
       seen.add(item.url);
       media.push(item);
     }
   }
   return media;
+}
+
+function sanitizeMedia(media: readonly TweetMedia[]): TweetMedia[] {
+  return media.flatMap((item) => {
+    const url = safeWebUrl(item.url);
+    if (url === null) return [];
+    const previewUrl = item.previewUrl === null ? null : safeWebUrl(item.previewUrl);
+    return [{ ...item, url, previewUrl }];
+  });
 }
 
 function threadHeaderHtml(root: TweetData, count: number): string {
@@ -281,7 +291,7 @@ export function renderTweetHtml(
 
 function authorHtml(tweet: TweetData): string {
   const label = `${tweet.authorName} (@${tweet.authorUsername})`;
-  return `𝕏 <a href="${escapeAttr(tweet.authorUrl)}">${escapeHtml(label)}</a>`;
+  return `𝕏 ${anchorHtml(tweet.authorUrl, label)}`;
 }
 
 function relatedBlockHtml(tweet: TweetData, quoted: boolean, rich: boolean): string {
@@ -297,14 +307,14 @@ function relatedBlockHtml(tweet: TweetData, quoted: boolean, rich: boolean): str
 function relatedTitleHtml(tweet: TweetData, quoted: boolean): string {
   const label = quoted ? "Цитируемый пост" : "Ответ на";
   const emoji = quoted ? "💬" : "↩️";
-  return `${emoji} <a href="${escapeAttr(tweet.url)}">${label}</a>`;
+  return `${emoji} ${anchorHtml(tweet.url, label)}`;
 }
 
 function relatedHtml(tweet: TweetData): string {
   const text = (tweet.text ?? "").trim();
   const label = `${tweet.authorName} (@${tweet.authorUsername})`;
   // Link the quoted/replied author's name to their profile.
-  const author = `<a href="${escapeAttr(tweet.authorUrl)}">${escapeHtml(label)}</a>`;
+  const author = anchorHtml(tweet.authorUrl, label);
   return text ? `${author}:\n${escapeHtml(truncateRaw(text, 500))}` : author;
 }
 
@@ -341,7 +351,22 @@ export function linkifyEntities(text: string): string {
 }
 
 function anchorHtml(href: string, label: string): string {
-  return `<a href="${escapeAttr(href)}">${escapeHtml(label)}</a>`;
+  const safeHref = safeWebUrl(href);
+  if (safeHref === null) return escapeHtml(label);
+  return `<a href="${escapeAttr(safeHref)}">${escapeHtml(label)}</a>`;
+}
+
+/** Reject executable, local, credential-bearing, and malformed links. */
+export function safeWebUrl(value: string): string | null {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password || !parsed.hostname) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }
 
 function trimTrailingPunctuation(url: string): string {

@@ -51,6 +51,12 @@ describe("mediaCarouselHtml", () => {
     const html = mediaCarouselHtml([photo("https://example.com/a.jpg?x=1&y=2")]);
     expect(html).toContain('src="https://example.com/a.jpg?x=1&amp;y=2"');
   });
+
+  it("drops unsafe and credential-bearing media URLs", () => {
+    expect(mediaCarouselHtml([photo("javascript:alert(1)")])).toBeNull();
+    expect(mediaCarouselHtml([photo("http://example.com/a.jpg")])).toBeNull();
+    expect(mediaCarouselHtml([photo("https://user:secret@example.com/a.jpg")])).toBeNull();
+  });
 });
 
 describe("buildRichMessage", () => {

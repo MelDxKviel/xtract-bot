@@ -1,5 +1,5 @@
 import type { Database } from "@/db/client";
-import { log } from "@/logging";
+import { log, safeError } from "@/logging";
 import { createProfileCacheRepository } from "@/repositories/profileCache";
 import { createTweetCacheRepository } from "@/repositories/tweetCache";
 
@@ -46,7 +46,7 @@ export function startCacheCleanup({
     try {
       await runOnce();
     } catch (error) {
-      log.error("cache cleanup failed", error);
+      log.error("cache cleanup failed", safeError(error));
     }
   };
 

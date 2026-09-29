@@ -4,6 +4,7 @@ import {
   escapeAttr,
   pluralPosts,
   RICH_MESSAGE_LIMIT,
+  safeWebUrl,
   type TelegramPost,
 } from "@/formatters/telegram";
 import type { TweetMedia } from "@/providers/base";
@@ -78,13 +79,15 @@ function buildThreadRichMessage(post: TelegramPost): InputRichMessage {
  * media. Media must live in its own block — never inline with the text.
  */
 export function mediaCarouselHtml(media: readonly TweetMedia[]): string | null {
-  if (media.length === 0) return null;
-  const elements = media.map(mediaElementHtml).join("");
-  return media.length === 1 ? elements : `<tg-slideshow>${elements}</tg-slideshow>`;
+  const elements = media.map(mediaElementHtml).filter((item): item is string => item !== null);
+  if (elements.length === 0) return null;
+  return elements.length === 1 ? elements[0]! : `<tg-slideshow>${elements.join("")}</tg-slideshow>`;
 }
 
-function mediaElementHtml(item: TweetMedia): string {
-  const src = escapeAttr(item.url);
+function mediaElementHtml(item: TweetMedia): string | null {
+  const safeUrl = safeWebUrl(item.url);
+  if (safeUrl === null) return null;
+  const src = escapeAttr(safeUrl);
   // Twitter animated GIFs are delivered as MP4s, so they map to <video> too.
   return item.type === "photo" ? `<img src="${src}"/>` : `<video src="${src}"></video>`;
 }

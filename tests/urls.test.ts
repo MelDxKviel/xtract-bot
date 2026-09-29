@@ -61,6 +61,7 @@ describe("parseTweetUrl", () => {
 
   it("rejects supported hosts behind an unsupported scheme", () => {
     expect(parseTweetUrl("ftp://x.com/user/status/123")).toBeNull();
+    expect(parseTweetUrl("http://x.com/user/status/123")).toBeNull();
     expect(extractFirstTweetUrl("link ftp://x.com/user/status/123 here")).toBeNull();
   });
 
@@ -182,6 +183,7 @@ describe("parseProfileUrl", () => {
   it("rejects unsupported hosts", () => {
     expect(parseProfileUrl("https://example.com/jack")).toBeNull();
     expect(parseProfileUrl("https://x.com")).toBeNull();
+    expect(parseProfileUrl("http://x.com/jack")).toBeNull();
   });
 
   it("extracts a profile URL from surrounding text", () => {

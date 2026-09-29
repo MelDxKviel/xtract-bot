@@ -1,3 +1,4 @@
+import { safeError } from "@/logging";
 import { Composer, GrammyError, InputFile, type InlineKeyboard } from "grammy";
 import type { InputMediaPhoto, InputMediaVideo } from "grammy/types";
 
@@ -160,7 +161,7 @@ async function replyWithPost(
   } catch (error) {
     if (!(error instanceof GrammyError)) throw error;
 
-    console.error("failed to send rich message", error);
+    console.error("failed to send rich message", safeError(error));
   }
 
   if (post.media.length > 0) {
@@ -202,7 +203,7 @@ async function sendMedia(
       return;
     } catch (error) {
       if (!(error instanceof GrammyError)) throw error;
-      console.error("failed to send media group", error);
+      console.error("failed to send media group", safeError(error));
     }
 
     const previewGroup = previewInputGroup(media, options.captionGroup);
@@ -255,14 +256,14 @@ async function trySendOne(
     return true;
   } catch (error) {
     if (!(error instanceof GrammyError)) throw error;
-    console.error(`failed to send ${item.type} by URL`, error);
+    console.error(`failed to send ${item.type} by URL`, safeError(error));
   }
   if (item.type !== "photo") {
     let file: InputFile;
     try {
       file = await downloadVideo(item.url);
     } catch (error) {
-      console.error("failed to download video for upload", error);
+      console.error("failed to download video for upload", safeError(error));
       return false;
     }
     try {
@@ -270,7 +271,7 @@ async function trySendOne(
       return true;
     } catch (error) {
       if (!(error instanceof GrammyError)) throw error;
-      console.error(`failed to upload ${item.type}`, error);
+      console.error(`failed to upload ${item.type}`, safeError(error));
     }
     return false;
   }

@@ -3,7 +3,7 @@ import type { BotCommand } from "grammy/types";
 
 import type { Settings } from "@/config";
 import type { AppContext } from "@/bot/context";
-import { log } from "@/logging";
+import { log, safeError } from "@/logging";
 
 const PUBLIC_COMMANDS: BotCommand[] = [
   { command: "start", description: "Описание бота" },
@@ -33,7 +33,7 @@ export async function registerBotCommands(bot: Bot<AppContext>, settings: Settin
         scope: { type: "chat", chat_id: adminId },
       });
     } catch (error) {
-      log.error(`failed to set admin commands for ${adminId}`, error);
+      log.error(`failed to set admin commands for ${adminId}`, safeError(error));
     }
   }
 }

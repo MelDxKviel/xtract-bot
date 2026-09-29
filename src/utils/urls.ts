@@ -125,10 +125,7 @@ export function parseTweetUrl(rawUrl: string): ParsedTweetUrl | null {
     return null;
   }
 
-  if (
-    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
-    !isSupportedHost(parsed.hostname)
-  ) {
+  if (parsed.protocol !== "https:" || !isSupportedHost(parsed.hostname)) {
     return null;
   }
 
@@ -179,10 +176,7 @@ export function parseProfileUrl(rawUrl: string): ParsedProfileUrl | null {
     return null;
   }
 
-  if (
-    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
-    !isSupportedHost(parsed.hostname)
-  ) {
+  if (parsed.protocol !== "https:" || !isSupportedHost(parsed.hostname)) {
     return null;
   }
 

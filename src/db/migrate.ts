@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { safeError } from "@/logging";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -47,6 +48,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error(error);
+  console.error(safeError(error));
   process.exit(1);
 });

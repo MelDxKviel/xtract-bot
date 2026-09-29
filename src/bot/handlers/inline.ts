@@ -1,3 +1,4 @@
+import { safeError } from "@/logging";
 import { Composer, GrammyError, type InlineKeyboard } from "grammy";
 import type {
   InlineQueryResult,
@@ -192,9 +193,9 @@ inlineComposer.on("chosen_inline_result", async (ctx) => {
       });
     } catch (error) {
       if (error instanceof TranslationError) {
-        console.error("translation failed", error.code, error.message);
+        console.error("translation failed", safeError(error));
       } else {
-        console.error("translation unexpected error", error);
+        console.error("translation unexpected error", safeError(error));
       }
       await safeEditText(
         ctx,
@@ -257,7 +258,7 @@ async function safeEditRich(
   } catch (error) {
     if (!(error instanceof GrammyError)) throw error;
 
-    console.error("failed to edit inline rich message", error);
+    console.error("failed to edit inline rich message", safeError(error));
   }
 
   // Fall back to the legacy single-media / text edit if rich messages are unavailable.
@@ -284,7 +285,7 @@ async function safeEditText(
   } catch (error) {
     if (!(error instanceof GrammyError)) throw error;
 
-    console.error("failed to edit inline message", error);
+    console.error("failed to edit inline message", safeError(error));
   }
 }
 
@@ -303,7 +304,7 @@ async function safeEditMedia(
   } catch (error) {
     if (!(error instanceof GrammyError)) throw error;
 
-    console.error("failed to edit inline media", error);
+    console.error("failed to edit inline media", safeError(error));
   }
 
   if (item.type === "photo" && item.previewUrl) {
@@ -322,7 +323,7 @@ async function safeEditMedia(
     } catch (error) {
       if (!(error instanceof GrammyError)) throw error;
 
-      console.error("failed to edit inline media preview", error);
+      console.error("failed to edit inline media preview", safeError(error));
     }
   }
 

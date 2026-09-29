@@ -397,6 +397,32 @@ describe("renderTweetHtml rich features", () => {
     );
   });
 
+  it("does not render provider-supplied unsafe author links", () => {
+    const html = renderTweetHtml(makeTweetData({ authorUrl: "javascript:alert(1)" }));
+    expect(html).toContain("Display &lt;Name&gt; (@user)");
+    expect(html).not.toContain("javascript:");
+    expect(html).not.toContain("<a href");
+  });
+
+  it("removes unsafe media URLs before handing a post to Telegram", () => {
+    const post = formatTweet(
+      makeTweetData({
+        media: [
+          makeMedia({ type: "photo", url: "file:///etc/passwd" }),
+          makeMedia({
+            type: "photo",
+            url: "https://example.com/photo.jpg",
+            previewUrl: "http://localhost/private",
+          }),
+        ],
+      }),
+    );
+
+    expect(post.media).toHaveLength(1);
+    expect(post.media[0]!.url).toBe("https://example.com/photo.jpg");
+    expect(post.media[0]!.previewUrl).toBeNull();
+  });
+
   it("collapses long quotes into <details> only in rich mode", () => {
     const tweet = withLongQuote();
     const rich = renderTweetHtml(tweet, RICH_MESSAGE_LIMIT, { rich: true });

@@ -4,7 +4,7 @@ import { registerBotCommands } from "@/bot/commands";
 import { buildBot } from "@/bot/dispatcher";
 import { loadSettings, type Settings } from "@/config";
 import { closeDatabase, createDatabase } from "@/db/client";
-import { configureLogging, log } from "@/logging";
+import { configureLogging, log, safeError } from "@/logging";
 import { createTweetProvider } from "@/providers/factory";
 import { createProfileProvider } from "@/providers/profileFactory";
 import { cleanupExpiredCache, startCacheCleanup } from "@/services/cacheCleanup";
@@ -70,24 +70,24 @@ async function main(): Promise<void> {
     try {
       await provider.close();
     } catch (error) {
-      log.error("error closing provider", error);
+      log.error("error closing provider", safeError(error));
     }
     try {
       await profileProvider.close();
     } catch (error) {
-      log.error("error closing profile provider", error);
+      log.error("error closing profile provider", safeError(error));
     }
     try {
       await closeDatabase(dbHandle);
     } catch (error) {
-      log.error("error closing database", error);
+      log.error("error closing database", safeError(error));
     }
   };
 
   try {
     await registerBotCommands(bot, settings);
   } catch (error) {
-    log.error("failed to register bot commands", error);
+    log.error("failed to register bot commands", safeError(error));
   }
 
   if (settings.pollingEnabled) {
@@ -102,7 +102,7 @@ async function runPolling(bot: Bot<AppContext>, drainAndClose: () => Promise<voi
     try {
       await bot.stop();
     } catch (error) {
-      log.error("error stopping bot", error);
+      log.error("error stopping bot", safeError(error));
     }
   };
 
@@ -180,6 +180,6 @@ function webhookPath(webhookUrl: string): string {
 }
 
 main().catch((error) => {
-  console.error(error);
+  console.error(safeError(error));
   process.exit(1);
 });
