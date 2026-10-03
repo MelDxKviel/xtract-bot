@@ -1,6 +1,8 @@
 import { safeError } from "@/logging";
 import { formatThread, formatTweet, type TelegramPost } from "@/formatters/telegram";
 import { TweetProviderError, type TweetData, type TweetProvider } from "@/providers/base";
+import type { FetchLike } from "@/providers/http";
+import { needsVideoRefresh, selectTweetVideos } from "@/services/videoSelection";
 import type { ShareEventRepository } from "@/repositories/shareEvents";
 import type { TweetCacheRepository } from "@/repositories/tweetCache";
 import { extractFirstTweetUrl, type ParsedTweetUrl } from "@/utils/urls";
@@ -51,6 +53,7 @@ interface Deps {
   negativeCacheTtlSeconds: number;
   threadUnrollEnabled: boolean;
   threadMaxTweets: number;
+  mediaFetch?: FetchLike;
 }
 
 export function createTweetShareService(deps: Deps): TweetShareService {
@@ -73,6 +76,7 @@ export function createTweetShareService(deps: Deps): TweetShareService {
   ): Promise<TweetData> => {
     try {
       const tweet = await provider.getTweet(tweetId, normalizedUrl);
+      await selectTweetVideos(tweet, deps.mediaFetch);
       await cacheRepository.set(tweet, sourceUrl, { ttlSeconds: cacheTtlSeconds });
       return tweet;
     } catch (error) {
@@ -95,7 +99,7 @@ export function createTweetShareService(deps: Deps): TweetShareService {
     const url = `https://x.com/i/status/${tweetId}`;
     try {
       const entry = await cacheRepository.getEntry(tweetId);
-      if (entry?.kind === "hit") return entry.tweet;
+      if (entry?.kind === "hit" && !needsVideoRefresh(entry.tweet)) return entry.tweet;
       if (entry?.kind === "negative") return null;
       return await fetchAndCache(tweetId, url, url);
     } catch {
@@ -189,7 +193,7 @@ export function createTweetShareService(deps: Deps): TweetShareService {
       try {
         const entry = await cacheRepository.getEntry(parsed.tweetId);
         let tweet: TweetData;
-        if (entry?.kind === "hit") {
+        if (entry?.kind === "hit" && !needsVideoRefresh(entry.tweet)) {
           tweet = entry.tweet;
           cacheHit = true;
         } else if (entry?.kind === "negative") {

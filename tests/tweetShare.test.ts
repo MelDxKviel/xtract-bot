@@ -3,9 +3,19 @@ import { describe, expect, it } from "vitest";
 import {
   TweetProviderError,
   makeTweet,
+  tweetFromPayload,
+  tweetToPayload,
   type TweetData,
   type TweetProvider,
 } from "@/providers/base";
+import type { FetchLike } from "@/providers/http";
+import { PublicEmbedTweetProvider } from "@/providers/publicEmbed";
+import { buildRichMessage } from "@/formatters/richMessage";
+import type { AppContext } from "@/bot/context";
+import { inlineComposer } from "@/bot/handlers/inline";
+import { privateComposer } from "@/bot/handlers/private";
+import fixture from "./fixtures/video-2105979012426174943.json";
+import { createHarness } from "./support/botHarness";
 import type { CacheEntry, TweetCacheRepository } from "@/repositories/tweetCache";
 import { createTweetShareService, type ProcessOptions } from "@/services/tweetShare";
 
@@ -110,6 +120,7 @@ function makeService(
     negativeCacheTtlSeconds?: number;
     threadUnrollEnabled?: boolean;
     threadMaxTweets?: number;
+    mediaFetch?: FetchLike;
   } = {},
 ): ServiceParts {
   const provider = options.provider ?? new FakeProvider();
@@ -123,11 +134,111 @@ function makeService(
     negativeCacheTtlSeconds: options.negativeCacheTtlSeconds ?? 600,
     threadUnrollEnabled: options.threadUnrollEnabled ?? false,
     threadMaxTweets: options.threadMaxTweets ?? 10,
+    mediaFetch: options.mediaFetch,
   });
   return { provider, cache, events, service };
 }
 
 describe("TweetShareService", () => {
+  it.each(["private", "inline"] as const)(
+    "refreshes and caches a playable rendition of the reported video in %s mode",
+    async (mode) => {
+      const publicProvider = new PublicEmbedTweetProvider({
+        fetch: async () => new Response(JSON.stringify(fixture)),
+      });
+      const tweet = await publicProvider.getTweet(fixture.tweet.id, fixture.tweet.url);
+      const oldPayload = tweetToPayload(tweet);
+      delete oldPayload.media[0]!.video_variants;
+      if (mode === "inline") {
+        oldPayload.media[0]!.type = "photo";
+        oldPayload.media[0]!.url = fixture.tweet.media.all[0]!.thumbnail_url;
+      }
+      const cache = new FakeCache(tweetFromPayload(oldPayload));
+      const provider = new FakeProvider(new Map([[tweet.tweetId, tweet]]));
+      const probes: string[] = [];
+      const { service } = makeService({
+        provider,
+        cache,
+        mediaFetch: async (url) => {
+          probes.push(url);
+          return new Response(null, {
+            headers: {
+              "content-length": url.includes("1920x1080") ? "56861214" : "12328458",
+            },
+          });
+        },
+      });
+      const first = await service.processText(fixture.tweet.url, { ...OPTIONS, mode });
+      expect(first.ok).toBe(true);
+      expect(first.cacheHit).toBe(false);
+      expect(first.post!.media).toHaveLength(1);
+      expect(first.post!.media[0]).toMatchObject({ type: "video", width: 1280, height: 720 });
+      const rich = buildRichMessage(first.post!);
+      expect(rich.html).toContain("<video");
+      expect(rich.html).toContain("1280x720");
+      expect(rich.html).not.toContain(fixture.tweet.media.all[0]!.thumbnail_url);
+
+      const second = await service.processText(fixture.tweet.url, { ...OPTIONS, mode });
+      expect(second.cacheHit).toBe(true);
+      expect(second.post!.media).toEqual(first.post!.media);
+      expect(provider.calls).toEqual([tweet.tweetId]);
+      expect(probes).toHaveLength(2);
+      expect(cache.setCalls).toBe(1);
+
+      // Exercise the real Telegram handlers, including rejection of rich media.
+      // Both paths must retain the selected MP4 instead of attaching its cover.
+      for (const failRich of [false, true]) {
+        const h = createHarness({
+          register: (bot) => bot.use(mode === "private" ? privateComposer : inlineComposer),
+          inject: (ctx) => {
+            ctx.services = { tweetShare: service } as AppContext["services"];
+          },
+          failCall: (call) => failRich && Boolean(call.payload.rich_message),
+        });
+        const from = { id: 1, is_bot: false, first_name: "User" };
+        await h.handle(
+          mode === "private"
+            ? {
+                update_id: 1,
+                message: {
+                  message_id: 1,
+                  date: 0,
+                  chat: { id: 1, type: "private" },
+                  from,
+                  text: fixture.tweet.url,
+                },
+              }
+            : {
+                update_id: 1,
+                chosen_inline_result: {
+                  result_id: `tweet-${tweet.tweetId}`,
+                  inline_message_id: "MID",
+                  from,
+                  query: fixture.tweet.url,
+                },
+              },
+        );
+        if (failRich) {
+          const call = h.lastCall(mode === "private" ? "sendVideo" : "editMessageMedia")!;
+          expect(call).toBeDefined();
+          if (mode === "private") expect(call.payload.video).toBe(first.post!.media[0]!.url);
+          else
+            expect(call.payload.media).toMatchObject({
+              type: "video",
+              media: first.post!.media[0]!.url,
+            });
+        } else {
+          const call = h.lastCall(mode === "private" ? "sendRichMessage" : "editMessageText")!;
+          expect(call.payload.rich_message).toMatchObject({
+            html: expect.stringContaining("1280x720"),
+          });
+        }
+        expect(h.callsTo("sendPhoto")).toHaveLength(0);
+        expect(JSON.stringify(h.calls)).not.toContain(fixture.tweet.media.all[0]!.thumbnail_url);
+      }
+    },
+  );
+
   it("fetches via provider and records success", async () => {
     const { provider, events, service } = makeService();
     const result = await service.processText("https://x.com/user/status/123", OPTIONS);

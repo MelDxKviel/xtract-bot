@@ -7,6 +7,7 @@ import {
   type TweetProvider,
 } from "@/providers/base";
 import { buildUrl, getFetch, withTimeout, type FetchLike } from "@/providers/http";
+import { mp4Variants } from "@/providers/video";
 
 const BASE_URL = "https://api.twitter.com/2";
 
@@ -231,7 +232,8 @@ export class XApiTweetProvider implements TweetProvider {
       };
     }
     if (type === "video" || type === "animated_gif") {
-      const url = this.bestVariantUrl(payload);
+      const variants = mp4Variants(payload.variants);
+      const url = variants[0]?.url;
       if (!url) {
         throw new TweetProviderError("video response contains no MP4 variant", {
           code: "provider_bad_response",
@@ -244,18 +246,10 @@ export class XApiTweetProvider implements TweetProvider {
         width: payload.width ?? null,
         height: payload.height ?? null,
         durationMs: payload.duration_ms ?? null,
+        videoVariants: variants,
       };
     }
     return null;
-  }
-
-  private bestVariantUrl(payload: XApiMedia): string | null {
-    const variants = (payload.variants ?? []).filter(
-      (item) => item.content_type === "video/mp4" && item.url,
-    );
-    if (variants.length === 0) return null;
-    variants.sort((a, b) => (b.bit_rate ?? 0) - (a.bit_rate ?? 0));
-    return variants[0]!.url!;
   }
 }
 

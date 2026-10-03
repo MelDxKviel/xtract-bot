@@ -10,6 +10,11 @@ export class TweetProviderError extends Error {
   }
 }
 
+export interface TweetVideoVariant {
+  url: string;
+  bitrate: number | null;
+}
+
 export interface TweetMedia {
   type: MediaType;
   url: string;
@@ -17,6 +22,8 @@ export interface TweetMedia {
   width: number | null;
   height: number | null;
   durationMs: number | null;
+  /** MP4 alternatives. Undefined identifies cached media from older parsers. */
+  videoVariants?: TweetVideoVariant[];
 }
 
 export interface TweetPollOption {
@@ -63,6 +70,7 @@ export function makeMedia(
     width: partial.width ?? null,
     height: partial.height ?? null,
     durationMs: partial.durationMs ?? null,
+    videoVariants: partial.videoVariants ?? [],
   };
 }
 
@@ -94,6 +102,7 @@ export interface TweetMediaPayload {
   width: number | null;
   height: number | null;
   duration_ms: number | null;
+  video_variants?: TweetVideoVariant[];
 }
 
 export interface TweetPollPayload {
@@ -126,6 +135,7 @@ export function mediaToPayload(media: TweetMedia): TweetMediaPayload {
     width: media.width,
     height: media.height,
     duration_ms: media.durationMs,
+    video_variants: media.videoVariants ?? [],
   };
 }
 
@@ -141,6 +151,7 @@ export function mediaFromPayload(payload: TweetMediaPayload): TweetMedia {
     width: payload.width ?? null,
     height: payload.height ?? null,
     durationMs: payload.duration_ms ?? null,
+    videoVariants: payload.video_variants,
   };
 }
 

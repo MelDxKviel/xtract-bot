@@ -1,0 +1,48 @@
+{
+  "code": 200,
+  "tweet": {
+    "id": "2105979012426174943",
+    "url": "https://x.com/theclipzne/status/2105979012426174943",
+    "author": { "screen_name": "theclipzne", "name": "TheClipZone" },
+    "text": "Video regression fixture: media fields from the reported FxTwitter response.",
+    "media": {
+      "all": [
+        {
+          "type": "video",
+          "url": "https://video.twimg.com/amplify_video/2105977605467914240/vid/avc1/1920x1080/UX6LGsXHGtVz0aHS.mp4?tag=29",
+          "thumbnail_url": "https://pbs.twimg.com/amplify_video_thumb/2105977605467914240/img/xNHomnn6X986B1fo.jpg",
+          "duration": 71.45,
+          "width": 1920,
+          "height": 1080,
+          "variants": [
+            {
+              "url": "https://video.twimg.com/amplify_video/2105977605467914240/pl/oNtD-zC2awD3bvn8.m3u8?tag=29&v=ec2",
+              "bitrate": 0,
+              "content_type": "application/x-mpegURL"
+            },
+            {
+              "url": "https://video.twimg.com/amplify_video/2105977605467914240/vid/avc1/480x270/0S4II42AE_Q1Qh4T.mp4?tag=29",
+              "bitrate": 256000,
+              "content_type": "video/mp4"
+            },
+            {
+              "url": "https://video.twimg.com/amplify_video/2105977605467914240/vid/avc1/640x360/wPiH7n9rWxp3wgjq.mp4?tag=29",
+              "bitrate": 832000,
+              "content_type": "video/mp4"
+            },
+            {
+              "url": "https://video.twimg.com/amplify_video/2105977605467914240/vid/avc1/1280x720/Ej6Nuw33JYPkllup.mp4?tag=29",
+              "bitrate": 2176000,
+              "content_type": "video/mp4"
+            },
+            {
+              "url": "https://video.twimg.com/amplify_video/2105977605467914240/vid/avc1/1920x1080/UX6LGsXHGtVz0aHS.mp4?tag=29",
+              "bitrate": 10368000,
+              "content_type": "video/mp4"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

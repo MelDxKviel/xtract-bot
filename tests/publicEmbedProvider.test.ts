@@ -22,6 +22,30 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 }
 
 describe("PublicEmbedTweetProvider", () => {
+  it("tries another provider when mediaURLs contains only a video cover", async () => {
+    const calls: string[] = [];
+    const provider = new PublicEmbedTweetProvider({
+      fetch: fetchFromHandler((input) => {
+        const host = new URL(input).host;
+        calls.push(host);
+        return jsonResponse({
+          code: 200,
+          tweet: {
+            id: "123",
+            text: "video",
+            author: { screen_name: "user", name: "User" },
+            ...(host === "api.fxtwitter.com"
+              ? { mediaURLs: ["https://pbs.twimg.com/amplify_video_thumb/123/img/cover.jpg"] }
+              : { media: { all: [{ type: "video", url: "https://video.twimg.com/video.mp4" }] } }),
+          },
+        });
+      }),
+    });
+    const tweet = await provider.getTweet("123", "https://x.com/user/status/123");
+    expect(calls).toEqual(["api.fxtwitter.com", "api.vxtwitter.com"]);
+    expect(tweet.media[0]!.type).toBe("video");
+  });
+
   it("uses the playable video URL and removes its duplicate poster", async () => {
     const poster = "https://pbs.twimg.com/ext_tw_video_thumb/preview.jpg";
     const provider = new PublicEmbedTweetProvider({

@@ -10,6 +10,7 @@ import {
   type TweetProvider,
 } from "@/providers/base";
 import { buildUrl, getFetch, withTimeout, type FetchLike } from "@/providers/http";
+import { isVideoPoster, mp4Variants } from "@/providers/video";
 
 const SYNDICATION_URL = "https://cdn.syndication.twimg.com/tweet-result";
 const OEMBED_URL = "https://publish.twitter.com/oembed";
@@ -508,10 +509,9 @@ function mediaFromPublicItem(item: Record<string, any>): TweetMedia | null {
   const mediaTypeRaw = String(item.type ?? "").toLowerCase();
   const isVideo = ["video", "gif", "animated_gif"].includes(mediaTypeRaw);
   const videoInfo = isRecord(item.video_info) ? item.video_info : {};
+  const variants = mp4Variants(item.variants ?? videoInfo.variants ?? item.formats);
   const url = isVideo
-    ? (bestVariantUrl(item.variants ?? videoInfo.variants) ??
-      firstStr(item, "video_url", "download_url") ??
-      mediaUrl(item))
+    ? (variants[0]?.url ?? firstStr(item, "video_url", "download_url") ?? mediaUrl(item))
     : mediaUrl(item);
   if (isVideo && (!url || looksLikeImageUrl(url))) {
     throw new TweetProviderError("video response contains no playable URL", {
@@ -535,7 +535,10 @@ function mediaFromPublicItem(item: Record<string, any>): TweetMedia | null {
       (isVideo && mediaUrl(item) && looksLikeImageUrl(mediaUrl(item)!) ? mediaUrl(item) : null),
     width: intOrNull(item.width) ?? nestedInt(item, "size", "width"),
     height: intOrNull(item.height) ?? nestedInt(item, "size", "height"),
-    durationMs: intOrNull(item.duration_ms ?? item.duration_millis),
+    durationMs:
+      intOrNull(item.duration_ms ?? item.duration_millis ?? videoInfo.duration_millis) ??
+      intOrNull(Number(item.duration) * 1000),
+    videoVariants: isVideo ? variants : [],
   };
 }
 
@@ -720,7 +723,8 @@ function mediaFromDetail(payload: Record<string, any>): TweetMedia | null {
   if (mediaType !== "video" && mediaType !== "animated_gif") return null;
 
   const videoInfo = isRecord(payload.video_info) ? (payload.video_info as Record<string, any>) : {};
-  const url = bestVariantUrl(videoInfo.variants);
+  const variants = mp4Variants(videoInfo.variants);
+  const url = variants[0]?.url;
   const preview = mediaUrl(payload);
   if (!url) return null;
   return {
@@ -730,11 +734,13 @@ function mediaFromDetail(payload: Record<string, any>): TweetMedia | null {
     width: sizeValue(payload, "w") ?? intOrNull(payload.width),
     height: sizeValue(payload, "h") ?? intOrNull(payload.height),
     durationMs: intOrNull(videoInfo.duration_millis),
+    videoVariants: variants,
   };
 }
 
 function videoFromPayload(payload: Record<string, any>): TweetMedia | null {
-  const url = bestVariantUrl(payload.variants);
+  const variants = mp4Variants(payload.variants);
+  const url = variants[0]?.url;
   const preview = String(payload.poster ?? payload.thumbnail ?? payload.preview_image_url ?? "");
   if (!url) return null;
   const type: TweetMedia["type"] = payload.type === "animated_gif" ? "gif" : "video";
@@ -745,23 +751,8 @@ function videoFromPayload(payload: Record<string, any>): TweetMedia | null {
     width: intOrNull(payload.width),
     height: intOrNull(payload.height),
     durationMs: intOrNull(payload.duration_ms ?? payload.duration_millis),
+    videoVariants: variants,
   };
-}
-
-function bestVariantUrl(value: unknown): string | null {
-  if (!Array.isArray(value)) return null;
-  const variants = value.filter(
-    (item) =>
-      isRecord(item) &&
-      typeof item.url === "string" &&
-      String(item.content_type ?? "").toLowerCase() === "video/mp4",
-  );
-  if (variants.length === 0) return null;
-  variants.sort(
-    (a: any, b: any) =>
-      (intOrNull(a.bitrate ?? a.bit_rate) ?? 0) - (intOrNull(b.bitrate ?? b.bit_rate) ?? 0),
-  );
-  return String(variants[variants.length - 1]!.url);
 }
 
 function mediaUrl(payload: Record<string, any>): string | null {
@@ -789,6 +780,11 @@ function oembedTweetUrl(url: string): string {
 }
 
 function ensureUsableTweet(tweet: TweetData): void {
+  if (tweet.media.some((item) => item.type === "photo" && isVideoPoster(item.url))) {
+    throw new TweetProviderError("provider returned a video poster without its video", {
+      code: "provider_bad_response",
+    });
+  }
   const hasContent = Boolean(
     tweet.text || tweet.media.length || tweet.quotedTweet || tweet.repliedToTweet,
   );
