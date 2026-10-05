@@ -217,6 +217,66 @@ describe("inline query", () => {
 });
 
 describe("chosen inline result", () => {
+  it("edits a long linked post with media into one complete rich message without page buttons", async () => {
+    const text = "@jack & < > ".repeat(1900) + " THE END";
+    const data = tweet({
+      text,
+      media: [makeMedia({ type: "photo", url: "https://pbs.twimg.com/a.jpg" })],
+    });
+    const h = harness({ result: successResult({ tweet: data }) });
+    await h.handle(chosenResult(TWEET_URL));
+    const call = h.lastCall("editMessageText")!;
+    expect((call.payload.rich_message as { html: string }).html).toContain("THE END");
+    expect((call.payload.rich_message as { html: string }).html).toContain(
+      '<img src="https://pbs.twimg.com/a.jpg"/>',
+    );
+    expect(h.callsTo("editMessageText")).toHaveLength(1);
+    expect(JSON.stringify(call.payload.reply_markup)).not.toContain("callback_data");
+    expect(h.callsTo("editMessageMedia")).toHaveLength(0);
+  });
+
+  it("retries a full long rich post without media after the media URL is rejected", async () => {
+    const text = "я".repeat(10_000) + " THE END";
+    const data = tweet({
+      text,
+      media: [makeMedia({ type: "photo", url: "https://pbs.twimg.com/a.jpg" })],
+    });
+    const h = harness(
+      { result: successResult({ tweet: data }) },
+      {
+        failCall: (call) =>
+          call.method === "editMessageText" &&
+          String((call.payload.rich_message as { html?: string } | undefined)?.html).includes(
+            "<img",
+          ),
+      },
+    );
+    await h.handle(chosenResult(TWEET_URL));
+    const calls = h.callsTo("editMessageText");
+    expect(calls).toHaveLength(2);
+    expect((calls[1]!.payload.rich_message as { html: string }).html).toContain(text);
+    expect(h.callsTo("editMessageMedia")).toHaveLength(0);
+  });
+
+  it("never silently clips a long post after both rich-message attempts fail", async () => {
+    const data = tweet({
+      text: "я".repeat(10_000) + " THE END",
+      media: [makeMedia({ type: "photo", url: "https://pbs.twimg.com/a.jpg" })],
+    });
+    const h = harness(
+      { result: successResult({ tweet: data }) },
+      { failCall: (call) => call.method === "editMessageText" && "rich_message" in call.payload },
+    );
+    await h.handle(chosenResult(TWEET_URL));
+    expect(h.lastCall("editMessageText")!.payload.text).toContain(
+      "Не удалось отправить пост целиком",
+    );
+    expect(h.callsTo("editMessageMedia")).toHaveLength(0);
+    expect(JSON.stringify(h.lastCall("editMessageText")!.payload.reply_markup)).not.toContain(
+      "callback_data",
+    );
+  });
+
   it.each(["video", "gif"] as const)(
     "never replaces rejected inline %s with a poster",
     async (type) => {

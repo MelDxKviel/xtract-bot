@@ -2,9 +2,9 @@ import type { TweetData, TweetMedia, TweetPoll } from "@/providers/base";
 
 export const MESSAGE_LIMIT = 4096;
 export const CAPTION_LIMIT = 1024;
-// Rich messages allow up to 32768 chars; a small margin covers markup and the
-// newline-to-<br> expansion done when rendering the rich message.
-export const RICH_MESSAGE_LIMIT = 32000;
+// Rich Messages allow 32768 characters of rendered text. HTML source length
+// includes tags and URLs and must never be used to clip their content.
+export const RICH_MESSAGE_LIMIT = 32768;
 export const MAX_MEDIA = 10;
 export const ORIGINAL_POST_LABEL = "🔗 Оригинальный пост";
 
@@ -20,7 +20,7 @@ export interface TelegramThreadSegment {
 export interface TelegramPost {
   /** Body for a plain message (capped at the 4096-char Telegram limit). */
   html: string;
-  /** Body for a Rich Message (up to ~32k chars, so long posts aren't truncated). */
+  /** Complete body for a Rich Message; never clipped by HTML source length. */
   richHtml: string;
   captionHtml: string;
   linkHtml: string;
@@ -53,7 +53,7 @@ export function formatTweet(tweet: TweetData, options: FormatOptions = {}): Tele
   const suffixLen = "\n\n".length + linkHtml.length;
   return {
     html: renderTweetHtml(tweet, MESSAGE_LIMIT - suffixLen, options),
-    richHtml: renderTweetHtml(tweet, RICH_MESSAGE_LIMIT - suffixLen, { ...options, rich: true }),
+    richHtml: renderTweetHtml(tweet, Infinity, { ...options, rich: true }),
     captionHtml: renderTweetHtml(tweet, CAPTION_LIMIT - suffixLen, options),
     linkHtml,
     media,
@@ -80,15 +80,15 @@ export function formatThread(
   const media = collectThreadMedia(tweets);
   const linkHtml = originalPostLinkHtml(root.url);
   const suffixLen = "\n\n".length + linkHtml.length;
-  // Segments carry full (uncapped) bodies; the Rich Message builder enforces the
-  // 32k char / 50 media limits while interleaving.
+  // Segments carry complete bodies. HTML markup and media URLs must not count
+  // toward a local text budget or cause trailing posts to disappear.
   const segments: TelegramThreadSegment[] = tweets.map((tweet) => ({
-    html: threadBodyHtml(tweet, RICH_MESSAGE_LIMIT, true),
+    html: threadBodyHtml(tweet, Infinity, true),
     media: sanitizeMedia(tweet.media),
   }));
   return {
     html: renderThreadHtml(tweets, MESSAGE_LIMIT - suffixLen, options),
-    richHtml: renderThreadHtml(tweets, RICH_MESSAGE_LIMIT - suffixLen, { ...options, rich: true }),
+    richHtml: renderThreadHtml(tweets, Infinity, { ...options, rich: true }),
     captionHtml: renderThreadHtml(tweets, CAPTION_LIMIT - suffixLen, options),
     linkHtml,
     media: media.slice(0, MAX_MEDIA),
@@ -157,7 +157,7 @@ function renderThreadHtml(
     footer.push(`<i>Язык оригинала: ${escapeHtml(options.originalLanguageLabel)}</i>`);
   }
 
-  const segCap = options.rich ? 4000 : 800;
+  const segCap = options.rich ? Infinity : 800;
   const bodies = tweets.map((tweet) => threadBodyHtml(tweet, segCap, options.rich ?? false));
 
   const assemble = (count: number): string => {
@@ -296,7 +296,7 @@ function authorHtml(tweet: TweetData): string {
 
 function relatedBlockHtml(tweet: TweetData, quoted: boolean, rich: boolean): string {
   const title = relatedTitleHtml(tweet, quoted);
-  const body = relatedHtml(tweet);
+  const body = relatedHtml(tweet, rich);
   // Collapse long quotes into an expandable block (rich messages only).
   if (rich && (tweet.text ?? "").trim().length > QUOTE_COLLAPSE_LIMIT) {
     return `<details><summary>${title}</summary>${body}</details>`;
@@ -310,12 +310,12 @@ function relatedTitleHtml(tweet: TweetData, quoted: boolean): string {
   return `${emoji} ${anchorHtml(tweet.url, label)}`;
 }
 
-function relatedHtml(tweet: TweetData): string {
+function relatedHtml(tweet: TweetData, rich: boolean): string {
   const text = (tweet.text ?? "").trim();
   const label = `${tweet.authorName} (@${tweet.authorUsername})`;
   // Link the quoted/replied author's name to their profile.
   const author = anchorHtml(tweet.authorUrl, label);
-  return text ? `${author}:\n${escapeHtml(truncateRaw(text, 500))}` : author;
+  return text ? `${author}:\n${escapeHtml(rich ? text : truncateRaw(text, 500))}` : author;
 }
 
 const ENTITY_RE =

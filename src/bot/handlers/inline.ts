@@ -19,8 +19,13 @@ import {
   openProfileButton,
   originalPostButton,
 } from "@/bot/ui";
-import { formatTweet, type TelegramPost } from "@/formatters/telegram";
-import { buildRichMessage } from "@/formatters/richMessage";
+import {
+  CAPTION_LIMIT,
+  MESSAGE_LIMIT,
+  formatTweet,
+  type TelegramPost,
+} from "@/formatters/telegram";
+import { buildRichMessage, legacyTextHtml, renderedTextLength } from "@/formatters/richMessage";
 import type { TweetMedia } from "@/providers/base";
 import { languageNameInRussian, translateTweet, TranslationError } from "@/services/translation";
 import { extractFirstProfileUrl, extractFirstTweetUrl } from "@/utils/urls";
@@ -257,17 +262,50 @@ async function safeEditRich(
     return;
   } catch (error) {
     if (!(error instanceof GrammyError)) throw error;
+    if (error.description.includes("message is not modified")) return;
 
     console.error("failed to edit inline rich message", safeError(error));
   }
 
-  // Fall back to the legacy single-media / text edit if rich messages are unavailable.
-  if (post.media.length > 0) {
-    await safeEditMedia(ctx, inlineMessageId, post.media[0]!, post.captionHtml, replyMarkup);
+  const text = legacyTextHtml(post);
+  const textLength = renderedTextLength(text);
+  if (post.media.length > 0 && textLength > CAPTION_LIMIT) {
+    // A rejected media URL must not replace the full body with a short caption.
+    // Retry the same complete Rich Message text without the rejected attachments.
+    try {
+      await ctx.api.editMessageTextInline(
+        inlineMessageId,
+        buildRichMessage({
+          ...post,
+          media: [],
+          segments: post.segments?.map((segment) => ({ ...segment, media: [] })),
+        }),
+        { reply_markup: replyMarkup },
+      );
+      return;
+    } catch (error) {
+      if (!(error instanceof GrammyError)) throw error;
+      if (error.description.includes("message is not modified")) return;
+      console.error("failed to edit inline rich text", safeError(error));
+    }
+  }
+
+  // Legacy fallback is allowed only if it can carry the entire text.
+  if (post.media.length > 0 && textLength <= CAPTION_LIMIT) {
+    await safeEditMedia(ctx, inlineMessageId, post.media[0]!, text, replyMarkup);
     return;
   }
 
-  await safeEditText(ctx, inlineMessageId, post.html, replyMarkup);
+  if (textLength <= MESSAGE_LIMIT) {
+    await safeEditText(ctx, inlineMessageId, text, replyMarkup);
+    return;
+  }
+  await safeEditText(
+    ctx,
+    inlineMessageId,
+    "⚠️ Не удалось отправить пост целиком. Откройте оригинал.",
+    replyMarkup,
+  );
 }
 
 async function safeEditText(

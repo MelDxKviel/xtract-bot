@@ -144,6 +144,23 @@ describe("formatTweet", () => {
     expect(post.richHtml.length).toBeLessThanOrEqual(RICH_MESSAGE_LIMIT);
   });
 
+  it("preserves a full long rich post even when links and entities make HTML exceed 32k", () => {
+    const text = "@jack & < > ".repeat(1900) + " THE END";
+    const post = formatTweet(makeTweetData({ text }));
+    expect(text.length).toBeLessThan(25_000);
+    expect(post.richHtml.length).toBeGreaterThan(RICH_MESSAGE_LIMIT);
+    expect(post.richHtml).toContain("THE END");
+    expect(post.richHtml.match(/@jack<\/a>/g)).toHaveLength(1900);
+  });
+
+  it("preserves full quoted text in rich mode beyond the old 500-character preview", () => {
+    const post = formatTweet(
+      makeTweetData({ quotedTweet: makeTweetData({ text: "ц".repeat(5000) + " QUOTE END" }) }),
+    );
+    expect(post.richHtml).toContain("ц".repeat(5000) + " QUOTE END");
+    expect(post.richHtml).toContain("<details>");
+  });
+
   it("appends italic original-language footer when requested", () => {
     const post = formatTweet(makeTweetData(), { originalLanguageLabel: "английский" });
     expect(post.html).toContain("<i>Язык оригинала: английский</i>");

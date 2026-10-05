@@ -22,6 +22,65 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 }
 
 describe("PublicEmbedTweetProvider", () => {
+  it.each(["note_tweet", "extended_tweet", "full_text"])(
+    "prefers complete %s text over a shortened text field",
+    async (field) => {
+      const text = "long post ".repeat(1000) + "THE END";
+      const value =
+        field === "full_text" ? text : field === "extended_tweet" ? { full_text: text } : { text };
+      const provider = new PublicEmbedTweetProvider({
+        fetch: fetchFromHandler(() =>
+          jsonResponse({
+            code: 200,
+            tweet: {
+              id: "123",
+              text: "short…",
+              [field]: value,
+              author: { screen_name: "user", name: "User" },
+            },
+          }),
+        ),
+      });
+      expect((await provider.getTweet("123", "https://x.com/user/status/123")).text).toBe(text);
+    },
+  );
+
+  it("preserves display text instead of restoring hidden URLs from raw_text", async () => {
+    const provider = new PublicEmbedTweetProvider({
+      fetch: fetchFromHandler(() =>
+        jsonResponse({
+          code: 200,
+          tweet: {
+            id: "123",
+            text: "complete display text",
+            raw_text: { text: "complete display text https://t.co/media" },
+            author: { screen_name: "user", name: "User" },
+          },
+        }),
+      ),
+    });
+    expect((await provider.getTweet("123", "https://x.com/user/status/123")).text).toBe(
+      "complete display text",
+    );
+  });
+
+  it("prefers syndication full_text over its abbreviated text", async () => {
+    const text = "long post ".repeat(1000) + "THE END";
+    const provider = new PublicEmbedTweetProvider({
+      fetch: fetchFromHandler((input) =>
+        new URL(input).host === "cdn.syndication.twimg.com"
+          ? jsonResponse({
+              id_str: "123",
+              text: "short…",
+              full_text: text,
+              user: { screen_name: "user", name: "User" },
+            })
+          : new Response(null, { status: 503 }),
+      ),
+    });
+    expect((await provider.getTweet("123", "https://x.com/user/status/123")).text).toBe(text);
+  });
+
   it("tries another provider when mediaURLs contains only a video cover", async () => {
     const calls: string[] = [];
     const provider = new PublicEmbedTweetProvider({

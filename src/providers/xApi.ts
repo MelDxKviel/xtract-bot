@@ -39,6 +39,7 @@ interface XApiTweet {
   id: string;
   author_id?: string;
   text?: string;
+  note_tweet?: { text?: string };
   created_at?: string;
   lang?: string;
   attachments?: { media_keys?: string[]; poll_ids?: string[] };
@@ -68,7 +69,7 @@ export class XApiTweetProvider implements TweetProvider {
 
   async getTweet(tweetId: string, sourceUrl: string): Promise<TweetData> {
     const url = buildUrl(BASE_URL + "/", `tweets/${encodeURIComponent(tweetId)}`, {
-      "tweet.fields": "attachments,author_id,created_at,lang,referenced_tweets",
+      "tweet.fields": "attachments,author_id,created_at,lang,note_tweet,referenced_tweets",
       expansions:
         "author_id,attachments.media_keys,attachments.poll_ids,referenced_tweets.id,referenced_tweets.id.author_id",
       "user.fields": "name,username,url",
@@ -189,7 +190,7 @@ export class XApiTweetProvider implements TweetProvider {
         authorName: (user as XApiUser).name ?? username,
         authorUsername: username,
         authorUrl,
-        text: tweet.text ?? null,
+        text: tweet.note_tweet?.text || tweet.text || null,
         createdAt: tweet.created_at ? parseIsoDate(tweet.created_at) : null,
         media,
         quotedTweet,

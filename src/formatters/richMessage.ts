@@ -1,12 +1,7 @@
 import type { InputRichMessage } from "grammy/types";
+import { Parser } from "htmlparser2";
 
-import {
-  escapeAttr,
-  pluralPosts,
-  RICH_MESSAGE_LIMIT,
-  safeWebUrl,
-  type TelegramPost,
-} from "@/formatters/telegram";
+import { escapeAttr, safeWebUrl, type TelegramPost } from "@/formatters/telegram";
 import type { TweetMedia } from "@/providers/base";
 
 // Telegram caps a Rich Message at 50 media attachments in total.
@@ -18,7 +13,7 @@ const RICH_MEDIA_LIMIT = 50;
  * For a single tweet the body is the tweet text followed by one media carousel.
  * For an unrolled thread (`post.segments`), each post's text is followed by its
  * own media and the posts are chained with `<hr/>` dividers — no numbering, and
- * the long-message limit (not the 4096 plain limit) is used so nothing is cut.
+ * all text is retained in a single Rich Message without a local HTML-length cap.
  */
 export function buildRichMessage(post: TelegramPost): InputRichMessage {
   if (post.segments && post.segments.length > 0) {
@@ -38,39 +33,44 @@ export function buildRichMessage(post: TelegramPost): InputRichMessage {
 function buildThreadRichMessage(post: TelegramPost): InputRichMessage {
   const segments = post.segments ?? [];
   const blocks: string[] = [];
-  let used = 0;
 
   if (post.threadHeaderHtml) {
     const header = textToRichHtml(post.threadHeaderHtml);
     blocks.push(header);
-    used += header.length;
   }
 
   let mediaBudget = RICH_MEDIA_LIMIT;
-  let included = 0;
   for (const segment of segments) {
     const body = segment.html ? textToRichHtml(segment.html) : "";
     const allowed = segment.media.slice(0, Math.max(0, mediaBudget));
     const carousel = mediaCarouselHtml(allowed);
     const block = carousel ? (body ? `${body}\n${carousel}` : carousel) : body;
 
-    // Keep the whole message under the rich-text limit; always include the
-    // first post, then stop before overflowing rather than truncating mid-post.
-    const projected = used + block.length + "<hr/>".length;
-    if (included > 0 && projected > RICH_MESSAGE_LIMIT) break;
-
     blocks.push(block);
     mediaBudget -= allowed.length;
-    used = projected;
-    included += 1;
-  }
-
-  if (included < segments.length) {
-    const rest = segments.length - included;
-    blocks.push(`<i>… ещё ${rest} ${pluralPosts(rest)} — откройте оригинал</i>`);
   }
 
   return { html: blocks.join("<hr/>"), skip_entity_detection: true };
+}
+
+/** Full Rich Message text in HTML supported by legacy text/caption methods. */
+export function legacyTextHtml(post: TelegramPost): string {
+  return post.richHtml
+    .replace(/<details>/g, "<blockquote>")
+    .replace(/<\/details>/g, "</blockquote>")
+    .replace(/<summary>/g, "<b>")
+    .replace(/<\/summary>/g, "</b>\n");
+}
+
+/** Length after entity parsing, used only to choose a lossless legacy fallback. */
+export function renderedTextLength(html: string): number {
+  let length = 0;
+  new Parser({
+    ontext: (text) => {
+      length += text.length;
+    },
+  }).end(html);
+  return length;
 }
 
 /**

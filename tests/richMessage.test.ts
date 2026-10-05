@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { formatThread, formatTweet } from "@/formatters/telegram";
-import { buildRichMessage, mediaCarouselHtml } from "@/formatters/richMessage";
+import { buildRichMessage, mediaCarouselHtml, renderedTextLength } from "@/formatters/richMessage";
 import { makeMedia, makeTweet, type TweetData, type TweetMedia } from "@/providers/base";
 
 function makeTweetData(overrides: Partial<TweetData> = {}): TweetData {
@@ -97,6 +97,17 @@ describe("buildRichMessage", () => {
     expect(html!.length).toBeGreaterThan(4096);
   });
 
+  it("keeps long text and images in one rich message even when HTML source exceeds 32k", () => {
+    const text = "@jack & < > ".repeat(1900) + " THE END";
+    const message = buildRichMessage(
+      formatTweet(makeTweetData({ text, media: [photo("https://pbs.twimg.com/a.jpg")] })),
+    );
+    expect(message.html!.length).toBeGreaterThan(32768);
+    expect(renderedTextLength(message.html!)).toBeLessThan(32768);
+    expect(message.html).toContain("THE END");
+    expect(message.html).toContain('<img src="https://pbs.twimg.com/a.jpg"/>');
+  });
+
   it("disables auto entity detection so Twitter handles aren't mis-linked", () => {
     expect(buildRichMessage(formatTweet(makeTweetData())).skip_entity_detection).toBe(true);
   });
@@ -143,5 +154,20 @@ describe("buildRichMessage threads", () => {
     );
     const { html } = buildRichMessage(formatThread(tweets));
     expect(html!.length).toBeGreaterThan(4096);
+  });
+
+  it("does not drop a thread segment because media URLs inflate the HTML source", () => {
+    const text = "@jack & < > ".repeat(1000);
+    const message = buildRichMessage(
+      formatThread([
+        threadTweet("1", text + " FIRST END", [photo("https://pbs.twimg.com/1.jpg")]),
+        threadTweet("2", text + " SECOND END", [photo("https://pbs.twimg.com/2.jpg")]),
+      ]),
+    );
+    expect(message.html!.length).toBeGreaterThan(32768);
+    expect(renderedTextLength(message.html!)).toBeLessThan(32768);
+    expect(message.html).toContain("FIRST END");
+    expect(message.html).toContain("SECOND END");
+    expect(message.html).not.toContain("ещё");
   });
 });

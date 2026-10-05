@@ -390,11 +390,7 @@ function raiseForPublicApiError(payload: Record<string, any>): void {
 }
 
 function publicApiText(data: Record<string, any>): string | null {
-  let value: unknown = data.text;
-  if (typeof value !== "string") {
-    const rawText = data.raw_text;
-    value = isRecord(rawText) ? rawText.text : null;
-  }
+  const value = fullText(data);
   if (typeof value !== "string") return null;
   const normalized = normalizeText(decodeHtmlEntities(value));
   return normalized || null;
@@ -639,9 +635,26 @@ function bindingString(value: unknown): string | null {
 }
 
 function textFromSyndication(payload: Record<string, any>): string | null {
-  const value = payload.text ?? payload.full_text ?? payload.description;
+  const value = fullText(payload) ?? payload.description;
   if (typeof value !== "string") return null;
   return normalizeText(decodeHtmlEntities(value)) || null;
+}
+
+function fullText(payload: Record<string, any>): string | null {
+  const candidates: unknown[] = [
+    payload.note_tweet?.text,
+    payload.extended_tweet?.full_text,
+    payload.full_text,
+    payload.text,
+  ];
+  const text = candidates.reduce<string | null>(
+    (longest, text) =>
+      typeof text === "string" && text.length > (longest?.length ?? 0) ? text : longest,
+    null,
+  );
+  // raw_text may contain hidden media URLs and unexpanded facets, so preserve
+  // the provider's display text when available.
+  return text ?? (typeof payload.raw_text?.text === "string" ? payload.raw_text.text : null);
 }
 
 function mediaFromSyndication(payload: Record<string, any>): TweetMedia[] {
