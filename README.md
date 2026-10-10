@@ -38,10 +38,11 @@ caches the result in PostgreSQL, and returns a neatly formatted message.
 - 🧩 **Parses** `/status/<id>` and `/statuses/<id>` paths
 - 🧵 **Thread unrolling** — collects a self-reply chain into a single post
 - 🗳 **Polls** — renders options with vote counts and percentages
+- 🖼️ **Quote/reply media** — photos, videos and GIFs stay with their context in Rich Messages; long context is collapsible
 - 🔐 **User whitelist** and administrators via `ADMIN_IDS`
 - 🐢 **Per-user rate limiting** to protect providers from flooding (admins exempt)
 - 💬 **Commands** `/start`, `/help`, `/id`, `/allow`, `/deny`, `/users`, `/stats`, `/health`
-- ⚡ **Inline mode** with an instant "Loading…" response that is then edited in-place
+- ⚡ **Inline mode** with an instant "Loading…" response that is then edited in-place; choose **«Только пост — без цитаты и ответа»** to share only the post's own text and media
 - 🗄️ **Cache** of successful responses in PostgreSQL with a configurable TTL
 - 🚫 **Negative cache** so deleted/not-found posts don't re-hit providers
 - 🌐 **Polling _or_ webhook** deployment (`POLLING_ENABLED` / `WEBHOOK_URL`)

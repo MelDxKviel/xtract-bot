@@ -10,11 +10,20 @@ export const ORIGINAL_POST_LABEL = "🔗 Оригинальный пост";
 
 const LEADING_MENTIONS_RE = /^(@[A-Za-z0-9_]{1,50}(?:\s+|$))+/;
 
-export interface TelegramThreadSegment {
-  /** Rendered body for one thread post (text + poll, linkified; no author). */
+export interface TelegramRelatedPost {
+  titleHtml: string;
+  html: string;
+  media: readonly TweetMedia[];
+  collapsed: boolean;
+}
+
+export interface TelegramPostSegment {
+  /** Complete body for one post; the thread header supplies the author in threads. */
   html: string;
   /** Media belonging to this specific post, attached right after its text. */
   media: readonly TweetMedia[];
+  /** Quote/reply context, with its own media kept separate from the post's. */
+  relatedPost?: TelegramRelatedPost;
 }
 
 export interface TelegramPost {
@@ -27,11 +36,10 @@ export interface TelegramPost {
   media: readonly TweetMedia[];
   extraMediaCount: number;
   /**
-   * Present only for unrolled threads: one entry per post, in order. The Rich
-   * Message builder interleaves each post's text with its own media instead of
-   * merging everything into a single carousel.
+   * One entry per tweet, in order. The Rich Message builder keeps each post's
+   * text, media and quote/reply context together. Profiles use the flat fields.
    */
-  segments?: readonly TelegramThreadSegment[];
+  segments?: readonly TelegramPostSegment[];
   /** Author + thread marker rendered once above the segments (threads only). */
   threadHeaderHtml?: string;
 }
@@ -40,6 +48,8 @@ export interface FormatOptions {
   originalLanguageLabel?: string | null;
   /** Allow rich-only markup (e.g. collapsible `<details>` quotes). */
   rich?: boolean;
+  /** Include the quoted/replied-to post. Defaults to true. */
+  includeRelated?: boolean;
 }
 
 // Quoted/replied tweets longer than this collapse into a `<details>` block in
@@ -58,6 +68,13 @@ export function formatTweet(tweet: TweetData, options: FormatOptions = {}): Tele
     linkHtml,
     media,
     extraMediaCount: Math.max(0, safeMedia.length - MAX_MEDIA),
+    segments: [
+      {
+        html: renderTweetHtml(tweet, Infinity, { ...options, rich: true, includeRelated: false }),
+        media,
+        relatedPost: formatRelatedPost(tweet, options),
+      },
+    ],
   };
 }
 
@@ -82,9 +99,11 @@ export function formatThread(
   const suffixLen = "\n\n".length + linkHtml.length;
   // Segments carry complete bodies. HTML markup and media URLs must not count
   // toward a local text budget or cause trailing posts to disappear.
-  const segments: TelegramThreadSegment[] = tweets.map((tweet) => ({
+  const threadIds = new Set(tweets.map((tweet) => tweet.tweetId));
+  const segments: TelegramPostSegment[] = tweets.map((tweet) => ({
     html: threadBodyHtml(tweet, Infinity, true),
     media: sanitizeMedia(tweet.media),
+    relatedPost: formatRelatedPost(tweet, options, threadIds),
   }));
   return {
     html: renderThreadHtml(tweets, MESSAGE_LIMIT - suffixLen, options),
@@ -158,7 +177,16 @@ function renderThreadHtml(
   }
 
   const segCap = options.rich ? Infinity : 800;
-  const bodies = tweets.map((tweet) => threadBodyHtml(tweet, segCap, options.rich ?? false));
+  const threadIds = new Set(tweets.map((tweet) => tweet.tweetId));
+  const bodies = tweets.map((tweet) => {
+    const body = threadBodyHtml(tweet, segCap, options.rich ?? false);
+    const related = relatedTweet(tweet, options, threadIds);
+    return related
+      ? [body, relatedBlockHtml(related, tweet.quotedTweet !== null, options.rich ?? false)]
+          .filter(Boolean)
+          .join("\n\n")
+      : body;
+  });
 
   const assemble = (count: number): string => {
     const parts: string[] = [header];
@@ -261,7 +289,7 @@ export function renderTweetHtml(
     if (tweet.poll) {
       parts.push("", options.rich ? richPollHtml(tweet.poll) : pollHtml(tweet.poll));
     }
-    const related = tweet.quotedTweet ?? tweet.repliedToTweet;
+    const related = relatedTweet(tweet, options);
     if (related) {
       parts.push("", relatedBlockHtml(related, tweet.quotedTweet !== null, options.rich ?? false));
     }
@@ -292,6 +320,33 @@ export function renderTweetHtml(
 function authorHtml(tweet: TweetData): string {
   const label = `${tweet.authorName} (@${tweet.authorUsername})`;
   return `𝕏 ${anchorHtml(tweet.authorUrl, label)}`;
+}
+
+function relatedTweet(
+  tweet: TweetData,
+  options: FormatOptions,
+  threadIds?: ReadonlySet<string>,
+): TweetData | null {
+  if (options.includeRelated === false) return null;
+  if (tweet.quotedTweet) return tweet.quotedTweet;
+  const reply = tweet.repliedToTweet;
+  // Self-replies already appear as preceding segments in an unrolled thread.
+  return reply && !threadIds?.has(reply.tweetId) ? reply : null;
+}
+
+function formatRelatedPost(
+  tweet: TweetData,
+  options: FormatOptions,
+  threadIds?: ReadonlySet<string>,
+): TelegramRelatedPost | undefined {
+  const related = relatedTweet(tweet, options, threadIds);
+  if (!related) return undefined;
+  return {
+    titleHtml: relatedTitleHtml(related, tweet.quotedTweet !== null),
+    html: relatedHtml(related, true),
+    media: sanitizeMedia(related.media),
+    collapsed: (related.text ?? "").trim().length > QUOTE_COLLAPSE_LIMIT,
+  };
 }
 
 function relatedBlockHtml(tweet: TweetData, quoted: boolean, rich: boolean): string {
