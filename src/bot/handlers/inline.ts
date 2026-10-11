@@ -25,7 +25,13 @@ import {
   formatTweet,
   type TelegramPost,
 } from "@/formatters/telegram";
-import { buildRichMessage, legacyTextHtml, renderedTextLength } from "@/formatters/richMessage";
+import {
+  buildRichMessage,
+  hasRichMedia,
+  legacyTextHtml,
+  renderedTextLength,
+  withoutRichMedia,
+} from "@/formatters/richMessage";
 import type { TweetMedia } from "@/providers/base";
 import { languageNameInRussian, translateTweet, TranslationError } from "@/services/translation";
 import { extractFirstProfileUrl, extractFirstTweetUrl } from "@/utils/urls";
@@ -33,6 +39,7 @@ import { extractFirstProfileUrl, extractFirstTweetUrl } from "@/utils/urls";
 // Result-id prefixes; order matters when matching since they share a stem.
 const THREAD_ID_PREFIX = "tweet-thread-";
 const TRANSLATED_ID_PREFIX = "tweet-ru-";
+const SOLO_ID_PREFIX = "tweet-solo-";
 const DEFAULT_ID_PREFIX = "tweet-";
 const PROFILE_ID_PREFIX = "profile-";
 
@@ -105,6 +112,21 @@ inlineComposer.on("inline_query", async (ctx) => {
       },
       reply_markup: originalPostButton(parsed.normalizedUrl),
     },
+    {
+      type: "article",
+      id: `${SOLO_ID_PREFIX}${parsed.tweetId}`,
+      title: "Только пост — без цитаты и ответа",
+      description: "Текст и медиа самого поста, без контекста",
+      thumbnail_url: INLINE_THUMBNAIL_SHARE,
+      thumbnail_width: INLINE_THUMBNAIL_SIZE,
+      thumbnail_height: INLINE_THUMBNAIL_SIZE,
+      input_message_content: {
+        message_text: "⏳ Загрузка поста...",
+        parse_mode: "HTML",
+        link_preview_options: DISABLED_LINK_PREVIEW,
+      },
+      reply_markup: originalPostButton(parsed.normalizedUrl),
+    },
   ];
 
   // Offer unrolling the whole thread as a separate result (the user picks).
@@ -158,6 +180,7 @@ inlineComposer.on("chosen_inline_result", async (ctx) => {
   }
 
   const shareThread = resultId.startsWith(THREAD_ID_PREFIX);
+  const shareOnlyPost = resultId.startsWith(SOLO_ID_PREFIX);
   const translateToRussian =
     !shareThread &&
     resultId.startsWith(TRANSLATED_ID_PREFIX) &&
@@ -189,7 +212,8 @@ inlineComposer.on("chosen_inline_result", async (ctx) => {
   const originalUrl = share.tweet?.url ?? parsed.normalizedUrl;
   const button = originalPostButton(originalUrl);
 
-  let post = share.post;
+  let post =
+    shareOnlyPost && share.tweet ? formatTweet(share.tweet, { includeRelated: false }) : share.post;
   if (translateToRussian && share.tweet) {
     try {
       const translated = await translateTweet(share.tweet, ctx.translator);
@@ -269,17 +293,13 @@ async function safeEditRich(
 
   const text = legacyTextHtml(post);
   const textLength = renderedTextLength(text);
-  if (post.media.length > 0 && textLength > CAPTION_LIMIT) {
+  if (hasRichMedia(post) && textLength > CAPTION_LIMIT) {
     // A rejected media URL must not replace the full body with a short caption.
     // Retry the same complete Rich Message text without the rejected attachments.
     try {
       await ctx.api.editMessageTextInline(
         inlineMessageId,
-        buildRichMessage({
-          ...post,
-          media: [],
-          segments: post.segments?.map((segment) => ({ ...segment, media: [] })),
-        }),
+        buildRichMessage(withoutRichMedia(post)),
         { reply_markup: replyMarkup },
       );
       return;

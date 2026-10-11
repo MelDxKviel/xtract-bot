@@ -179,6 +179,30 @@ describe("private handler", () => {
     expect(h.callsTo("sendRichMessage").length).toBe(1);
   });
 
+  it.each(["quotedTweet", "repliedToTweet"] as const)(
+    "sends %s media with the context in a single rich message",
+    async (relation) => {
+      const data = tweet({
+        media: [makeMedia({ type: "photo", url: "https://pbs.twimg.com/main.jpg" })],
+        [relation]: tweet({
+          tweetId: "456",
+          text: "context text",
+          media: [makeMedia({ type: "video", url: "https://video.twimg.com/context.mp4" })],
+        }),
+      });
+      const h = harness({ result: successResult({ tweet: data }) });
+      await h.handle(privateText(TWEET_URL));
+      const call = h.lastCall("sendRichMessage")!;
+      const html = (call.payload.rich_message as { html: string }).html;
+      expect(html).toContain("hello world");
+      expect(html).toContain("https://pbs.twimg.com/main.jpg");
+      expect(html).toContain("context text");
+      expect(html).toContain("https://video.twimg.com/context.mp4");
+      expect(h.callsTo("sendRichMessage")).toHaveLength(1);
+      expect(h.callsTo("sendMediaGroup")).toHaveLength(0);
+    },
+  );
+
   it("passes the message text to the share service", async () => {
     let seen = "";
     const h = harness({ onProcess: (text) => (seen = text) });

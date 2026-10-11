@@ -186,19 +186,19 @@ describe("inline query", () => {
     expect(list[0]!.id).toBe("invalid-link");
   });
 
-  it("offers a single-post and a whole-thread result by default", async () => {
+  it("offers a post, a post without context and a whole-thread result by default", async () => {
     const h = harness();
     await h.handle(inlineQuery(TWEET_URL));
     const list = results(h.lastCall("answerInlineQuery"));
     const ids = list.map((item) => String(item.id));
-    expect(ids).toEqual(["tweet-123", "tweet-thread-123"]);
+    expect(ids).toEqual(["tweet-123", "tweet-solo-123", "tweet-thread-123"]);
   });
 
   it("omits the thread result when unrolling is disabled", async () => {
     const h = harness({ threadUnrollEnabled: false });
     await h.handle(inlineQuery(TWEET_URL));
     const ids = results(h.lastCall("answerInlineQuery")).map((item) => String(item.id));
-    expect(ids).toEqual(["tweet-123"]);
+    expect(ids).toEqual(["tweet-123", "tweet-solo-123"]);
   });
 
   it("offers a translation result when enabled", async () => {
@@ -217,6 +217,93 @@ describe("inline query", () => {
 });
 
 describe("chosen inline result", () => {
+  it("keeps context media in the default result", async () => {
+    const data = tweet({
+      quotedTweet: tweet({
+        tweetId: "456",
+        text: "quoted context",
+        media: [makeMedia({ type: "photo", url: "https://pbs.twimg.com/context.jpg" })],
+      }),
+    });
+    const h = harness({ result: successResult({ tweet: data }) });
+    await h.handle(chosenResult(TWEET_URL));
+    const html = (h.lastCall("editMessageText")!.payload.rich_message as { html: string }).html;
+    expect(html).toContain("quoted context");
+    expect(html).toContain("https://pbs.twimg.com/context.jpg");
+  });
+
+  it.each(["quotedTweet", "repliedToTweet"] as const)(
+    "sends only the selected post and its media without %s in the solo result",
+    async (relation) => {
+      const data = tweet({
+        media: [makeMedia({ type: "photo", url: "https://pbs.twimg.com/main.jpg" })],
+        [relation]: tweet({
+          tweetId: "456",
+          text: "unwanted context",
+          media: [makeMedia({ type: "video", url: "https://video.twimg.com/context.mp4" })],
+        }),
+      });
+      let seen: { unrollThread?: boolean } | undefined;
+      const h = harness({
+        result: successResult({ tweet: data }),
+        onProcess: (options) => (seen = options),
+      });
+      await h.handle(chosenResult(TWEET_URL, "tweet-solo-123"));
+      const call = h.lastCall("editMessageText")!;
+      const html = (call.payload.rich_message as { html: string }).html;
+      expect(html).toContain("hello world");
+      expect(html).toContain("https://pbs.twimg.com/main.jpg");
+      expect(html).not.toContain("unwanted context");
+      expect(html).not.toContain("https://video.twimg.com/context.mp4");
+      expect(seen!.unrollThread).toBe(false);
+      expect(JSON.stringify(call.payload.reply_markup)).toContain(TWEET_URL);
+      expect(data[relation]!.text).toBe("unwanted context");
+    },
+  );
+
+  it("keeps context out of the legacy media fallback for the solo result", async () => {
+    const data = tweet({
+      media: [makeMedia({ type: "photo", url: "https://pbs.twimg.com/main.jpg" })],
+      quotedTweet: tweet({ text: "unwanted context" }),
+      repliedToTweet: tweet({ text: "unwanted reply" }),
+    });
+    const h = harness(
+      { result: successResult({ tweet: data }) },
+      { failCall: (call) => call.method === "editMessageText" && "rich_message" in call.payload },
+    );
+    await h.handle(chosenResult(TWEET_URL, "tweet-solo-123"));
+    const payload = JSON.stringify(h.lastCall("editMessageMedia")!.payload);
+    expect(payload).toContain("hello world");
+    expect(payload).toContain("https://pbs.twimg.com/main.jpg");
+    expect(payload).not.toContain("unwanted");
+  });
+
+  it("retries long context without rejected media even when the main post has no attachments", async () => {
+    const data = tweet({
+      repliedToTweet: tweet({
+        text: "ц".repeat(5000) + " CONTEXT END",
+        media: [makeMedia({ type: "video", url: "https://video.twimg.com/context.mp4" })],
+      }),
+    });
+    const h = harness(
+      { result: successResult({ tweet: data }) },
+      {
+        failCall: (call) =>
+          call.method === "editMessageText" &&
+          String((call.payload.rich_message as { html?: string } | undefined)?.html).includes(
+            "<video",
+          ),
+      },
+    );
+    await h.handle(chosenResult(TWEET_URL));
+    const calls = h.callsTo("editMessageText");
+    expect(calls).toHaveLength(2);
+    const retry = (calls[1]!.payload.rich_message as { html: string }).html;
+    expect(retry).toContain("CONTEXT END");
+    expect(retry).not.toContain("<video");
+    expect(retry).not.toContain("<img");
+  });
+
   it("edits a long linked post with media into one complete rich message without page buttons", async () => {
     const text = "@jack & < > ".repeat(1900) + " THE END";
     const data = tweet({

@@ -1,7 +1,12 @@
 import type { InputRichMessage } from "grammy/types";
 import { Parser } from "htmlparser2";
 
-import { escapeAttr, safeWebUrl, type TelegramPost } from "@/formatters/telegram";
+import {
+  escapeAttr,
+  safeWebUrl,
+  type TelegramPost,
+  type TelegramRelatedPost,
+} from "@/formatters/telegram";
 import type { TweetMedia } from "@/providers/base";
 
 // Telegram caps a Rich Message at 50 media attachments in total.
@@ -10,14 +15,13 @@ const RICH_MEDIA_LIMIT = 50;
 /**
  * Build a Bot API Rich Message from an already-formatted post.
  *
- * For a single tweet the body is the tweet text followed by one media carousel.
- * For an unrolled thread (`post.segments`), each post's text is followed by its
- * own media and the posts are chained with `<hr/>` dividers — no numbering, and
- * all text is retained in a single Rich Message without a local HTML-length cap.
+ * Each tweet's body is followed by its own media, then a separate quote/reply
+ * block with the related post's media. Threads chain these segments with dividers.
+ * All text is retained without a local HTML-length cap.
  */
 export function buildRichMessage(post: TelegramPost): InputRichMessage {
   if (post.segments && post.segments.length > 0) {
-    return buildThreadRichMessage(post);
+    return buildSegmentedRichMessage(post);
   }
   const text = textToRichHtml(post.richHtml);
   const carousel = mediaCarouselHtml(post.media);
@@ -30,7 +34,7 @@ export function buildRichMessage(post: TelegramPost): InputRichMessage {
   };
 }
 
-function buildThreadRichMessage(post: TelegramPost): InputRichMessage {
+function buildSegmentedRichMessage(post: TelegramPost): InputRichMessage {
   const segments = post.segments ?? [];
   const blocks: string[] = [];
 
@@ -44,13 +48,51 @@ function buildThreadRichMessage(post: TelegramPost): InputRichMessage {
     const body = segment.html ? textToRichHtml(segment.html) : "";
     const allowed = segment.media.slice(0, Math.max(0, mediaBudget));
     const carousel = mediaCarouselHtml(allowed);
-    const block = carousel ? (body ? `${body}\n${carousel}` : carousel) : body;
-
-    blocks.push(block);
+    let block = carousel ? (body ? `${body}\n${carousel}` : carousel) : body;
     mediaBudget -= allowed.length;
+    if (segment.relatedPost) {
+      const relatedMedia = segment.relatedPost.media.slice(0, Math.max(0, mediaBudget));
+      block += relatedPostHtml(segment.relatedPost, relatedMedia);
+      mediaBudget -= relatedMedia.length;
+    }
+    blocks.push(block);
   }
 
   return { html: blocks.join("<hr/>"), skip_entity_detection: true };
+}
+
+function relatedPostHtml(post: TelegramRelatedPost, media: readonly TweetMedia[]): string {
+  const title = textToRichHtml(post.titleHtml);
+  const body = textToRichHtml(post.html);
+  const carousel = mediaCarouselHtml(media);
+  const quote = `<blockquote>${body}${carousel ? `\n${carousel}` : ""}</blockquote>`;
+  // Keep the entire context (including its carousel) inside the expandable block.
+  return post.collapsed
+    ? `<details><summary>${title}</summary>${quote}</details>`
+    : `<p>${title}</p>${quote}`;
+}
+
+/** Drop every attachment for a text-only rich retry, including quote/reply media. */
+export function withoutRichMedia(post: TelegramPost): TelegramPost {
+  return {
+    ...post,
+    media: [],
+    segments: post.segments?.map((segment) => ({
+      ...segment,
+      media: [],
+      relatedPost: segment.relatedPost ? { ...segment.relatedPost, media: [] } : undefined,
+    })),
+  };
+}
+
+export function hasRichMedia(post: TelegramPost): boolean {
+  return (
+    post.media.length > 0 ||
+    (post.segments?.some(
+      (segment) => segment.media.length > 0 || (segment.relatedPost?.media.length ?? 0) > 0,
+    ) ??
+      false)
+  );
 }
 
 /** Full Rich Message text in HTML supported by legacy text/caption methods. */
