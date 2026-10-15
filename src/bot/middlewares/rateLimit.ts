@@ -9,11 +9,16 @@ const RATE_LIMITED_TEXT = "🐢 Слишком много запросов. По
 type ShareKind = "private" | "inline";
 
 // Only the actions that actually fetch (a tweet or a profile) count against the
-// budget: a private message carrying such a URL, and the chosen inline result
-// (which triggers the real fetch). Cheap inline-query suggestions are not limited.
+// budget: a private message or /text command carrying a supported URL, and the
+// chosen inline result (which triggers the fetch). Cheap suggestions are not limited.
 function classify(ctx: AppContext): ShareKind | null {
   if (ctx.chosenInlineResult) return "inline";
   const text = ctx.message?.text;
+  if (ctx.hasCommand("text")) {
+    return ctx.chat?.type === "private" && extractFirstTweetUrl(ctx.match) !== null
+      ? "private"
+      : null;
+  }
   if (
     ctx.chat?.type === "private" &&
     text &&

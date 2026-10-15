@@ -8,6 +8,7 @@ import { log, safeError } from "@/logging";
 const PUBLIC_COMMANDS: BotCommand[] = [
   { command: "start", description: "Описание бота" },
   { command: "help", description: "Как пользоваться" },
+  { command: "text", description: "Пост без фото и видео" },
   { command: "id", description: "Показать ваш Telegram ID" },
 ];
 

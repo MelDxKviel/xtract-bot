@@ -186,19 +186,19 @@ describe("inline query", () => {
     expect(list[0]!.id).toBe("invalid-link");
   });
 
-  it("offers a post, a post without context and a whole-thread result by default", async () => {
+  it("offers post, post-only, text-only and whole-thread results by default", async () => {
     const h = harness();
     await h.handle(inlineQuery(TWEET_URL));
     const list = results(h.lastCall("answerInlineQuery"));
     const ids = list.map((item) => String(item.id));
-    expect(ids).toEqual(["tweet-123", "tweet-solo-123", "tweet-thread-123"]);
+    expect(ids).toEqual(["tweet-123", "tweet-solo-123", "tweet-text-123", "tweet-thread-123"]);
   });
 
   it("omits the thread result when unrolling is disabled", async () => {
     const h = harness({ threadUnrollEnabled: false });
     await h.handle(inlineQuery(TWEET_URL));
     const ids = results(h.lastCall("answerInlineQuery")).map((item) => String(item.id));
-    expect(ids).toEqual(["tweet-123", "tweet-solo-123"]);
+    expect(ids).toEqual(["tweet-123", "tweet-solo-123", "tweet-text-123"]);
   });
 
   it("offers a translation result when enabled", async () => {

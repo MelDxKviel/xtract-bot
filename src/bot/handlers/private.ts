@@ -4,7 +4,11 @@ import type { InputMediaPhoto, InputMediaVideo } from "grammy/types";
 
 import { DISABLED_LINK_PREVIEW, openProfileButton, originalPostButton } from "@/bot/ui";
 import type { AppContext } from "@/bot/context";
-import { buildRichMessage } from "@/formatters/richMessage";
+import {
+  buildRichMessage,
+  textOnlyFallbackMessages,
+  withoutRichMedia,
+} from "@/formatters/richMessage";
 import type { TelegramPost } from "@/formatters/telegram";
 import type { TweetMedia } from "@/providers/base";
 import type { ProfileShareResult } from "@/services/profileShare";
@@ -31,6 +35,7 @@ privateChat.command("start", async (ctx) => {
     "👋 <b>Xtract Bot</b> помогает красиво пересылать посты и профили X/Twitter в Telegram.\n\n" +
       "📨 Отправьте ссылку на пост X/Twitter в личный чат — бот вытащит текст, медиа " +
       "и оформит сообщение.\n" +
+      "📝 /text &lt;ссылка на пост&gt; — отправит текст без фото и видео.\n" +
       "👤 Отправьте ссылку на профиль (например <code>https://x.com/user</code>) — бот " +
       "красиво оформит карточку профиля.\n" +
       "🔍 Или используйте inline режим: <code>@bot_username &lt;ссылка&gt;</code> в любом чате.\n\n" +
@@ -44,12 +49,16 @@ privateChat.command("help", async (ctx) => {
   const baseHelp =
     "📖 <b>Как пользоваться ботом</b>\n\n" +
     "📨 Отправьте ссылку на пост X/Twitter в личный чат с ботом.\n" +
+    "📝 /text &lt;ссылка на пост&gt; — текст, опрос и контекст без фото и видео. " +
+    "Треды разворачиваются по настройкам бота.\n" +
     "👤 Отправьте ссылку на профиль (<code>https://x.com/user</code>) — бот оформит " +
     "карточку профиля.\n" +
     "✅ Поддерживаются: x.com, twitter.com и зеркала-фиксеры — vxtwitter, fixvx, " +
     "fxtwitter, fixupx, twittpr, xfixup, pxtwitter, twitterez (можно с любым поддоменом).\n\n" +
     "🔍 <b>Inline режим:</b> введите " +
-    "<code>@bot_username &lt;ссылка&gt;</code> в любом чате.\n\n" +
+    "<code>@bot_username &lt;ссылка&gt;</code> в любом чате. " +
+    "Выберите «Только текст — без медиа», чтобы отправить один пост с контекстом " +
+    "без фото и видео.\n\n" +
     "🆔 /id — покажет ваш Telegram ID.";
   const adminHelp =
     "\n\n🛠 <b>Команды администратора</b>\n" +
@@ -70,6 +79,27 @@ privateChat.command("help", async (ctx) => {
 privateChat.command("id", async (ctx) => {
   if (!ctx.from) return;
   await ctx.reply(`🆔 Ваш Telegram ID: <code>${ctx.from.id}</code>`, { parse_mode: "HTML" });
+});
+
+privateChat.command("text", async (ctx) => {
+  if (!ctx.from) return;
+  const parsed = extractFirstTweetUrl(ctx.match);
+  if (parsed === null) {
+    await ctx.reply(
+      "📝 Используйте /text &lt;ссылка на пост X/Twitter&gt;, например " +
+        "<code>/text https://x.com/user/status/123</code>. Фото и видео не отправляются.",
+      { parse_mode: "HTML", link_preview_options: DISABLED_LINK_PREVIEW },
+    );
+    return;
+  }
+
+  await sendThinkingDraft(ctx);
+  const result = await ctx.services.tweetShare.processUrl(parsed, {
+    telegramUserId: ctx.from.id,
+    chatId: ctx.chat.id,
+    mode: "private",
+  });
+  await sendShareResult(ctx, result, true);
 });
 
 privateChat.on("message:text", async (ctx) => {
@@ -120,7 +150,11 @@ async function sendThinkingDraft(ctx: AppContext): Promise<void> {
   }
 }
 
-async function sendShareResult(ctx: AppContext, result: ShareResult): Promise<void> {
+async function sendShareResult(
+  ctx: AppContext,
+  result: ShareResult,
+  textOnly = false,
+): Promise<void> {
   if (result.status === "invalid_url") {
     await ctx.reply(INVALID_LINK_TEXT, { link_preview_options: DISABLED_LINK_PREVIEW });
     return;
@@ -131,7 +165,7 @@ async function sendShareResult(ctx: AppContext, result: ShareResult): Promise<vo
   }
 
   const url = result.tweet?.url ?? result.normalizedUrl ?? "";
-  await replyWithPost(ctx, result.post, originalPostButton(url));
+  await replyWithPost(ctx, result.post, originalPostButton(url), textOnly);
 }
 
 async function sendProfileResult(ctx: AppContext, result: ProfileShareResult): Promise<void> {
@@ -154,7 +188,9 @@ async function replyWithPost(
   ctx: AppContext,
   post: TelegramPost,
   button: InlineKeyboard,
+  textOnly = false,
 ): Promise<void> {
+  if (textOnly) post = withoutRichMedia(post);
   try {
     await ctx.replyWithRichMessage(buildRichMessage(post), { reply_markup: button });
     return;
@@ -162,6 +198,17 @@ async function replyWithPost(
     if (!(error instanceof GrammyError)) throw error;
 
     console.error("failed to send rich message", safeError(error));
+  }
+
+  if (textOnly) {
+    for (const text of textOnlyFallbackMessages(post)) {
+      await ctx.reply(text, {
+        parse_mode: "HTML",
+        link_preview_options: DISABLED_LINK_PREVIEW,
+        reply_markup: button,
+      });
+    }
+    return;
   }
 
   if (post.media.length > 0) {
