@@ -39,6 +39,7 @@ caches the result in PostgreSQL, and returns a neatly formatted message.
 - 🧵 **Thread unrolling** — collects a self-reply chain into a single post
 - 🗳 **Polls** — renders options with vote counts and percentages
 - 🖼️ **Quote/reply media** — photos, videos and GIFs stay with their context in Rich Messages; long context is collapsible
+- 📝 **Text-only sharing** — `/text <post URL>` in private chat or **«Только текст — без медиа»** in inline mode keeps text, polls and context without photo/video attachments
 - 🔐 **User whitelist** and administrators via `ADMIN_IDS`
 - 🐢 **Per-user rate limiting** to protect providers from flooding (admins exempt)
 - 💬 **Commands** `/start`, `/help`, `/id`, `/allow`, `/deny`, `/users`, `/stats`, `/health`
@@ -48,6 +49,23 @@ caches the result in PostgreSQL, and returns a neatly formatted message.
 - 🌐 **Polling _or_ webhook** deployment (`POLLING_ENABLED` / `WEBHOOK_URL`)
 - 🐳 **Docker Compose** with PostgreSQL and Drizzle migrations out of the box
 - 🔌 **Multiple providers** to choose from: `fake`, `public_embed`, `external_http`, `x_api`
+
+### Share without media
+
+Send `/text https://x.com/user/status/123` to the bot in private chat to receive the post's
+text, poll and quote/reply context without photos, videos or GIFs. Self-threads follow the
+existing `THREAD_UNROLL_ENABLED` / `THREAD_MAX_TWEETS` settings. The command accepts post
+links, including supported mirrors; profile links are handled by ordinary sharing.
+
+In any chat, enter `@bot_username https://x.com/user/status/123` and choose
+**«Только текст — без медиа»**. This inline variant shares one post with its context.
+The original-post button remains available, and ordinary sharing still includes media.
+No new settings are required.
+
+If Telegram rejects a private Rich Message, the full text is sent as simpler text messages
+of up to 4096 characters with link previews disabled. Inline cannot send additional messages:
+if its full text does not fit after a Rich Message failure, the bot shows an explicit warning
+and a button to the original instead of silently clipping it.
 
 ---
 
@@ -196,11 +214,12 @@ bun run format        # prettier --write
 
 ### 👤 User
 
-| Command  | Description                |
-| -------- | -------------------------- |
-| `/start` | Greeting and access status |
-| `/help`  | Short usage guide          |
-| `/id`    | Your Telegram user ID      |
+| Command            | Description                |
+| ------------------ | -------------------------- |
+| `/start`           | Greeting and access status |
+| `/help`            | Short usage guide          |
+| `/text <post URL>` | Share a post without media |
+| `/id`              | Your Telegram user ID      |
 
 ### 🛡️ Admin
 

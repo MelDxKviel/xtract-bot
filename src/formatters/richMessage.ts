@@ -3,6 +3,8 @@ import { Parser } from "htmlparser2";
 
 import {
   escapeAttr,
+  escapeHtml,
+  MESSAGE_LIMIT,
   safeWebUrl,
   type TelegramPost,
   type TelegramRelatedPost,
@@ -102,6 +104,29 @@ export function legacyTextHtml(post: TelegramPost): string {
     .replace(/<\/details>/g, "</blockquote>")
     .replace(/<summary>/g, "<b>")
     .replace(/<\/summary>/g, "</b>\n");
+}
+
+/** Lossless text-only fallback when private Rich Messages are unavailable. */
+export function textOnlyFallbackMessages(post: TelegramPost): string[] {
+  let text = "";
+  new Parser({
+    ontext: (part) => {
+      text += part;
+    },
+  }).end(legacyTextHtml(post));
+
+  const messages: string[] = [];
+  let chunk = "";
+  // Iterate code points so a message boundary cannot split an emoji surrogate pair.
+  for (const character of text) {
+    if (chunk.length + character.length > MESSAGE_LIMIT) {
+      messages.push(escapeHtml(chunk));
+      chunk = "";
+    }
+    chunk += character;
+  }
+  if (chunk) messages.push(escapeHtml(chunk));
+  return messages;
 }
 
 /** Length after entity parsing, used only to choose a lossless legacy fallback. */

@@ -53,6 +53,16 @@ CI runs `typecheck`, `lint`, `format:check`, and `test` on every PR.
 
 **Profile sharing**: a bare handle URL (e.g. `https://x.com/jack`, no `/status/`) is treated as a profile share, handled by `profileShareService` instead of `tweetShareService`. `src/utils/urls.ts` exposes `parseProfileUrl` / `extractFirstProfileUrl` (rejects status links, reserved routes like `/home` or `/i/...`, and non-handle deep links; accepts known profile sub-tabs like `/media`). Profiles are fetched by a separate `ProfileProvider` (`getProfile`), cached in `profile_cache` (with the same positive/negative TTL scheme as tweets), formatted by `formatProfile` into a `TelegramPost` (avatar + banner as media, verified badge, follower/following/post counts, location, website, join date), and sent through the **same** Rich Message / legacy-ladder path. In inline mode it adds a **👤 Поделиться профилем** result (`profile-<username>`). Both private and inline profile fetches count against the rate limiter.
 
+**Text-only sharing**: `/text <post URL>` in private chat follows the normal share service
+and configured thread unrolling, then applies `withoutRichMedia` to a copy of the formatted
+post. Inline adds **Только текст — без медиа** (`tweet-text-<id>`) for a single post with
+quote/reply context, with no fetching until selection. Source tweets and cached media stay
+intact. The command uses the existing access and rate-limit middleware; invalid arguments
+do not consume a fetch token. If private Rich Messages fail, `textOnlyFallbackMessages`
+decodes the complete legacy HTML and sends escaped plain text in chunks of at most 4096
+UTF-16 units without splitting surrogate pairs, with previews disabled and an original-post
+button. Inline retains its lossless fallback or explicit full-text failure warning.
+
 ### Key Layers
 
 | Layer        | Path                    | Role                                                                                        |

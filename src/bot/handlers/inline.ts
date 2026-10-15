@@ -40,6 +40,7 @@ import { extractFirstProfileUrl, extractFirstTweetUrl } from "@/utils/urls";
 const THREAD_ID_PREFIX = "tweet-thread-";
 const TRANSLATED_ID_PREFIX = "tweet-ru-";
 const SOLO_ID_PREFIX = "tweet-solo-";
+const TEXT_ID_PREFIX = "tweet-text-";
 const DEFAULT_ID_PREFIX = "tweet-";
 const PROFILE_ID_PREFIX = "profile-";
 
@@ -127,6 +128,21 @@ inlineComposer.on("inline_query", async (ctx) => {
       },
       reply_markup: originalPostButton(parsed.normalizedUrl),
     },
+    {
+      type: "article",
+      id: `${TEXT_ID_PREFIX}${parsed.tweetId}`,
+      title: "Только текст — без медиа",
+      description: "Текст, опрос и контекст одного поста без фото и видео",
+      thumbnail_url: INLINE_THUMBNAIL_SHARE,
+      thumbnail_width: INLINE_THUMBNAIL_SIZE,
+      thumbnail_height: INLINE_THUMBNAIL_SIZE,
+      input_message_content: {
+        message_text: "⏳ Загрузка текста поста...",
+        parse_mode: "HTML",
+        link_preview_options: DISABLED_LINK_PREVIEW,
+      },
+      reply_markup: originalPostButton(parsed.normalizedUrl),
+    },
   ];
 
   // Offer unrolling the whole thread as a separate result (the user picks).
@@ -181,6 +197,7 @@ inlineComposer.on("chosen_inline_result", async (ctx) => {
 
   const shareThread = resultId.startsWith(THREAD_ID_PREFIX);
   const shareOnlyPost = resultId.startsWith(SOLO_ID_PREFIX);
+  const shareOnlyText = resultId.startsWith(TEXT_ID_PREFIX);
   const translateToRussian =
     !shareThread &&
     resultId.startsWith(TRANSLATED_ID_PREFIX) &&
@@ -214,6 +231,7 @@ inlineComposer.on("chosen_inline_result", async (ctx) => {
 
   let post =
     shareOnlyPost && share.tweet ? formatTweet(share.tweet, { includeRelated: false }) : share.post;
+  if (shareOnlyText) post = withoutRichMedia(post);
   if (translateToRussian && share.tweet) {
     try {
       const translated = await translateTweet(share.tweet, ctx.translator);
