@@ -1,6 +1,7 @@
 import type { MiddlewareFn } from "grammy";
 
 import type { AppContext } from "@/bot/context";
+import { messageShareText } from "@/bot/messageLinks";
 import type { RateLimiter } from "@/services/rateLimit";
 import { extractFirstProfileUrl, extractFirstTweetUrl } from "@/utils/urls";
 
@@ -13,11 +14,11 @@ type ShareKind = "private" | "inline";
 // (which triggers the real fetch). Cheap inline-query suggestions are not limited.
 function classify(ctx: AppContext): ShareKind | null {
   if (ctx.chosenInlineResult) return "inline";
-  const text = ctx.message?.text;
+  const text = ctx.message ? messageShareText(ctx.message) : "";
   if (
     ctx.chat?.type === "private" &&
     text &&
-    !text.startsWith("/") &&
+    !ctx.message?.text?.startsWith("/") &&
     (extractFirstTweetUrl(text) !== null || extractFirstProfileUrl(text) !== null)
   ) {
     return "private";

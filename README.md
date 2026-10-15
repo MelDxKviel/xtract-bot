@@ -36,6 +36,7 @@ caches the result in PostgreSQL, and returns a neatly formatted message.
 
 - 🔗 **URL support** for `x.com`, `twitter.com`, and embed-fixer mirrors — `vxtwitter.com`, `fixvx.com`, `fxtwitter.com`, `fixupx.com`, `twittpr.com`, `xfixup.com`, `pxtwitter.com`, `twitterez.com` (and any subdomain of these, e.g. `mobile.twitter.com`)
 - 🧩 **Parses** `/status/<id>` and `/statuses/<id>` paths
+- ↪️ **Forwarded messages** — send the bot a Telegram message with an X/Twitter link in its text, media caption, or a text hyperlink (e.g. “Source”); no need to copy the URL
 - 🧵 **Thread unrolling** — collects a self-reply chain into a single post
 - 🗳 **Polls** — renders options with vote counts and percentages
 - 🖼️ **Quote/reply media** — photos, videos and GIFs stay with their context in Rich Messages; long context is collapsible
@@ -193,6 +194,13 @@ bun run format        # prettier --write
 ---
 
 ## 📜 Commands
+
+In the private chat, you can also forward a message containing a post or profile link,
+including photo/video/document captions and links hidden behind text. The bot shares
+the first post link in reading order, or the first profile link if there are no posts.
+Hidden links are checked by their actual target, not their visible label. Unsupported
+links show the usual link hint; media without a caption is ignored. No extra setup is needed.
+Inline mode continues to accept a pasted URL.
 
 ### 👤 User
 

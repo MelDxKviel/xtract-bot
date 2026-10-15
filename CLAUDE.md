@@ -55,6 +55,12 @@ CI runs `typecheck`, `lint`, `format:check`, and `test` on every PR.
 
 ### Key Layers
 
+Private link discovery also accepts media captions and Telegram `text_link` entities,
+including forwarded messages. `src/bot/messageLinks.ts` replaces hidden labels with
+validated canonical targets in reading order; unsupported targets are discarded.
+Both the private handler and rate limiter use this same input, preserving post-over-profile
+priority and the shared request budget. Messages without text or captions are ignored.
+
 | Layer        | Path                    | Role                                                                                        |
 | ------------ | ----------------------- | ------------------------------------------------------------------------------------------- |
 | Entry point  | `src/main.ts`           | Init DB, bot, provider; polling/webhook                                                     |

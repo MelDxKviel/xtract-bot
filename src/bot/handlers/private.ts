@@ -4,6 +4,7 @@ import type { InputMediaPhoto, InputMediaVideo } from "grammy/types";
 
 import { DISABLED_LINK_PREVIEW, openProfileButton, originalPostButton } from "@/bot/ui";
 import type { AppContext } from "@/bot/context";
+import { messageShareText } from "@/bot/messageLinks";
 import { buildRichMessage } from "@/formatters/richMessage";
 import type { TelegramPost } from "@/formatters/telegram";
 import type { TweetMedia } from "@/providers/base";
@@ -31,6 +32,7 @@ privateChat.command("start", async (ctx) => {
     "👋 <b>Xtract Bot</b> помогает красиво пересылать посты и профили X/Twitter в Telegram.\n\n" +
       "📨 Отправьте ссылку на пост X/Twitter в личный чат — бот вытащит текст, медиа " +
       "и оформит сообщение.\n" +
+      "↪️ Можно переслать сообщение со ссылкой, в том числе в подписи к медиа или под текстом.\n" +
       "👤 Отправьте ссылку на профиль (например <code>https://x.com/user</code>) — бот " +
       "красиво оформит карточку профиля.\n" +
       "🔍 Или используйте inline режим: <code>@bot_username &lt;ссылка&gt;</code> в любом чате.\n\n" +
@@ -46,6 +48,9 @@ privateChat.command("help", async (ctx) => {
     "📨 Отправьте ссылку на пост X/Twitter в личный чат с ботом.\n" +
     "👤 Отправьте ссылку на профиль (<code>https://x.com/user</code>) — бот оформит " +
     "карточку профиля.\n" +
+    "↪️ Перешлите сообщение со ссылкой — бот найдёт её в подписи к медиа " +
+    "или под текстом (например «Источник»). Если ссылок несколько, выбирается " +
+    "первый пост, а если постов нет — первый профиль.\n" +
     "✅ Поддерживаются: x.com, twitter.com и зеркала-фиксеры — vxtwitter, fixvx, " +
     "fxtwitter, fixupx, twittpr, xfixup, pxtwitter, twitterez (можно с любым поддоменом).\n\n" +
     "🔍 <b>Inline режим:</b> введите " +
@@ -72,14 +77,14 @@ privateChat.command("id", async (ctx) => {
   await ctx.reply(`🆔 Ваш Telegram ID: <code>${ctx.from.id}</code>`, { parse_mode: "HTML" });
 });
 
-privateChat.on("message:text", async (ctx) => {
+privateChat.on(["message:text", "message:caption"], async (ctx) => {
   if (!ctx.from) return;
-  const text = ctx.message.text;
-  if (text.startsWith("/")) {
+  if (ctx.message.text?.startsWith("/")) {
     await ctx.reply("❓ Неизвестная команда. Используйте /help.");
     return;
   }
 
+  const text = messageShareText(ctx.message);
   // A status link is a post; otherwise a bare handle link is a profile.
   const tweetUrl = extractFirstTweetUrl(text);
   const profileUrl = tweetUrl ? null : extractFirstProfileUrl(text);
