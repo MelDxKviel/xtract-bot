@@ -63,6 +63,16 @@ decodes the complete legacy HTML and sends escaped plain text in chunks of at mo
 UTF-16 units without splitting surrogate pairs, with previews disabled and an original-post
 button. Inline retains its lossless fallback or explicit full-text failure warning.
 
+**Private retries**: fetch errors link to the original and, except for terminal errors
+or provider authentication failures, offer **🔄 Повторить**. `src/bot/shareRetry.ts`
+encodes only a post ID or profile handle and the sharing mode in callback data, validates
+it and reconstructs a canonical URL. The private handler uses the same share services and
+senders to deliver a new message, preserving `/text` and configured thread unrolling.
+Access and rate-limit middleware check callbacks before any fetch; malformed data does
+not consume a token. Callback acknowledgement failures do not block the share. Cache TTLs
+and negative-cache behavior are unchanged; old buttons cannot force a cache refresh.
+Inline retains its existing result-selection flow and does not use these private buttons.
+
 ### Key Layers
 
 | Layer        | Path                    | Role                                                                                        |

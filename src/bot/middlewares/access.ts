@@ -1,6 +1,7 @@
 import type { MiddlewareFn } from "grammy";
 
 import type { AppContext } from "@/bot/context";
+import { answerShareRetry } from "@/bot/shareRetry";
 
 const PUBLIC_COMMANDS = new Set(["/start", "/help", "/id"]);
 
@@ -19,7 +20,13 @@ export const accessMiddleware: MiddlewareFn<AppContext> = async (ctx, next) => {
     return next();
   }
 
-  if (ctx.message) {
+  if (ctx.chat?.type === "private" && ctx.callbackQuery?.data?.startsWith("retry:")) {
+    await answerShareRetry(
+      ctx,
+      `Доступ закрыт. Отправьте администратору ваш Telegram ID: ${user.id}`,
+      true,
+    );
+  } else if (ctx.message) {
     await ctx.reply(
       `Доступ закрыт. Отправьте администратору ваш Telegram ID: <code>${user.id}</code>`,
       { parse_mode: "HTML" },

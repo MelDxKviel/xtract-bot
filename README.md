@@ -40,6 +40,7 @@ caches the result in PostgreSQL, and returns a neatly formatted message.
 - 🗳 **Polls** — renders options with vote counts and percentages
 - 🖼️ **Quote/reply media** — photos, videos and GIFs stay with their context in Rich Messages; long context is collapsible
 - 📝 **Text-only sharing** — `/text <post URL>` in private chat or **«Только текст — без медиа»** in inline mode keeps text, polls and context without photo/video attachments
+- 🔄 **Retry failed loads** — private-chat errors offer a **«Повторить»** button for temporary failures, preserving the post/profile and `/text` mode
 - 🔐 **User whitelist** and administrators via `ADMIN_IDS`
 - 🐢 **Per-user rate limiting** to protect providers from flooding (admins exempt)
 - 💬 **Commands** `/start`, `/help`, `/id`, `/allow`, `/deny`, `/users`, `/stats`, `/health`
@@ -49,6 +50,18 @@ caches the result in PostgreSQL, and returns a neatly formatted message.
 - 🌐 **Polling _or_ webhook** deployment (`POLLING_ENABLED` / `WEBHOOK_URL`)
 - 🐳 **Docker Compose** with PostgreSQL and Drizzle migrations out of the box
 - 🔌 **Multiple providers** to choose from: `fake`, `public_embed`, `external_http`, `x_api`
+
+### Retry a failed load
+
+If a post or profile fails to load in private chat because of a timeout or a temporary
+provider error, wait a little and press **«🔄 Повторить»** below the error. The bot sends
+the result as a new message using the same sharing mode, including `/text` and configured
+thread unrolling. The error also links to the original post or profile.
+
+Retries use the existing access checks, per-user request budget and cache. Deleted/private
+items and provider authentication failures keep the original link without a retry button.
+No new settings are required. Inline sharing keeps its existing flow: select the result
+again to retry a failed load.
 
 ### Share without media
 

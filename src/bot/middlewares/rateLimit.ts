@@ -1,6 +1,7 @@
 import type { MiddlewareFn } from "grammy";
 
 import type { AppContext } from "@/bot/context";
+import { answerShareRetry, parseShareRetry } from "@/bot/shareRetry";
 import type { RateLimiter } from "@/services/rateLimit";
 import { extractFirstProfileUrl, extractFirstTweetUrl } from "@/utils/urls";
 
@@ -9,10 +10,11 @@ const RATE_LIMITED_TEXT = "🐢 Слишком много запросов. По
 type ShareKind = "private" | "inline";
 
 // Only the actions that actually fetch (a tweet or a profile) count against the
-// budget: a private message or /text command carrying a supported URL, and the
-// chosen inline result (which triggers the fetch). Cheap suggestions are not limited.
+// budget: private links, /text, retry buttons and chosen inline results.
+// Cheap suggestions and malformed retry data are not limited.
 function classify(ctx: AppContext): ShareKind | null {
   if (ctx.chosenInlineResult) return "inline";
+  if (ctx.chat?.type === "private" && parseShareRetry(ctx.callbackQuery?.data)) return "private";
   const text = ctx.message?.text;
   if (ctx.hasCommand("text")) {
     return ctx.chat?.type === "private" && extractFirstTweetUrl(ctx.match) !== null
@@ -43,6 +45,10 @@ export function rateLimitMiddleware(limiter: RateLimiter): MiddlewareFn<AppConte
 
     const seconds = Math.max(1, Math.ceil(result.retryAfterMs / 1000));
     if (kind === "private") {
+      if (ctx.callbackQuery) {
+        await answerShareRetry(ctx, `${RATE_LIMITED_TEXT} (~${seconds} с)`, true);
+        return;
+      }
       await ctx.reply(`${RATE_LIMITED_TEXT} (~${seconds} с)`);
       return;
     }

@@ -4,6 +4,7 @@ import type { InputMediaPhoto, InputMediaVideo } from "grammy/types";
 
 import { DISABLED_LINK_PREVIEW, openProfileButton, originalPostButton } from "@/bot/ui";
 import type { AppContext } from "@/bot/context";
+import { answerShareRetry, parseShareRetry, shareErrorKeyboard } from "@/bot/shareRetry";
 import {
   buildRichMessage,
   textOnlyFallbackMessages,
@@ -53,6 +54,8 @@ privateChat.command("help", async (ctx) => {
     "Треды разворачиваются по настройкам бота.\n" +
     "👤 Отправьте ссылку на профиль (<code>https://x.com/user</code>) — бот оформит " +
     "карточку профиля.\n" +
+    "🔄 При временной ошибке загрузки в личном чате нажмите «Повторить» под сообщением " +
+    "чуть позже — ссылка и режим /text сохраняются. Повторы учитываются в лимите запросов.\n" +
     "✅ Поддерживаются: x.com, twitter.com и зеркала-фиксеры — vxtwitter, fixvx, " +
     "fxtwitter, fixupx, twittpr, xfixup, pxtwitter, twitterez (можно с любым поддоменом).\n\n" +
     "🔍 <b>Inline режим:</b> введите " +
@@ -100,6 +103,29 @@ privateChat.command("text", async (ctx) => {
     mode: "private",
   });
   await sendShareResult(ctx, result, true);
+});
+
+privateChat.callbackQuery(/^retry:/, async (ctx) => {
+  if (!ctx.chat) return;
+  const retry = parseShareRetry(ctx.callbackQuery.data);
+  if (retry === null) {
+    await answerShareRetry(ctx, "Не удалось повторить загрузку. Отправьте ссылку заново.", true);
+    return;
+  }
+
+  await answerShareRetry(ctx, "Загружаю…");
+  await sendThinkingDraft(ctx);
+  const options = {
+    telegramUserId: ctx.from.id,
+    chatId: ctx.chat.id,
+    mode: "private" as const,
+  };
+  if (retry.kind === "profile") {
+    await sendProfileResult(ctx, await ctx.services.profileShare.processUrl(retry.parsed, options));
+  } else {
+    const result = await ctx.services.tweetShare.processUrl(retry.parsed, options);
+    await sendShareResult(ctx, result, retry.kind === "text");
+  }
 });
 
 privateChat.on("message:text", async (ctx) => {
@@ -160,7 +186,13 @@ async function sendShareResult(
     return;
   }
   if (!result.ok || result.post === null) {
-    await ctx.reply(FETCH_ERROR_TEXT);
+    await ctx.reply(FETCH_ERROR_TEXT, {
+      reply_markup: shareErrorKeyboard(
+        result.normalizedUrl,
+        result.errorCode,
+        textOnly ? "text" : "tweet",
+      ),
+    });
     return;
   }
 
@@ -174,7 +206,9 @@ async function sendProfileResult(ctx: AppContext, result: ProfileShareResult): P
     return;
   }
   if (!result.ok || result.post === null) {
-    await ctx.reply(PROFILE_ERROR_TEXT);
+    await ctx.reply(PROFILE_ERROR_TEXT, {
+      reply_markup: shareErrorKeyboard(result.normalizedUrl, result.errorCode, "profile"),
+    });
     return;
   }
 
