@@ -1,6 +1,10 @@
 import { Composer, InlineKeyboard } from "grammy";
 
 import type { AppContext } from "@/bot/context";
+import {
+  SETTING_RUSSIAN_TRANSLATION_ENABLED,
+  SETTING_WHITELIST_ENABLED,
+} from "@/repositories/botSettings";
 
 const PANEL_TOGGLE_TRANSLATE = "panel:translate:toggle";
 
@@ -67,9 +71,11 @@ privateChat.command("whitelist", async (ctx) => {
   const arg = ctx.match?.trim().toLowerCase();
   if (arg === "on") {
     ctx.runtimeConfig.whitelistEnabled = true;
+    await ctx.repositories.botSettings.setBool(SETTING_WHITELIST_ENABLED, true);
     await ctx.reply("✅ Whitelist включён.");
   } else if (arg === "off") {
     ctx.runtimeConfig.whitelistEnabled = false;
+    await ctx.repositories.botSettings.setBool(SETTING_WHITELIST_ENABLED, false);
     await ctx.reply("🔓 Whitelist выключен — доступ открыт для всех.");
   } else {
     const status = ctx.runtimeConfig.whitelistEnabled ? "✅ включён" : "🔓 выключен";
@@ -87,9 +93,11 @@ privateChat.command("translate", async (ctx) => {
   const arg = ctx.match?.trim().toLowerCase();
   if (arg === "on") {
     ctx.runtimeConfig.russianTranslationEnabled = true;
+    await ctx.repositories.botSettings.setBool(SETTING_RUSSIAN_TRANSLATION_ENABLED, true);
     await ctx.reply("✅ Перевод на русский (beta) включён.");
   } else if (arg === "off") {
     ctx.runtimeConfig.russianTranslationEnabled = false;
+    await ctx.repositories.botSettings.setBool(SETTING_RUSSIAN_TRANSLATION_ENABLED, false);
     await ctx.reply("🔕 Перевод на русский (beta) выключен.");
   } else {
     const status = ctx.runtimeConfig.russianTranslationEnabled ? "✅ включён" : "🔕 выключен";
@@ -119,6 +127,10 @@ privateChat.callbackQuery(PANEL_TOGGLE_TRANSLATE, async (ctx) => {
     return;
   }
   ctx.runtimeConfig.russianTranslationEnabled = !ctx.runtimeConfig.russianTranslationEnabled;
+  await ctx.repositories.botSettings.setBool(
+    SETTING_RUSSIAN_TRANSLATION_ENABLED,
+    ctx.runtimeConfig.russianTranslationEnabled,
+  );
   try {
     await ctx.editMessageText(await renderPanelText(ctx), {
       parse_mode: "HTML",

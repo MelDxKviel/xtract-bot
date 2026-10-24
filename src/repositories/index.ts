@@ -5,6 +5,10 @@ import {
   type AdminActionsRepository,
 } from "@/repositories/adminActions";
 import {
+  createBotSettingsRepository,
+  type BotSettingsRepository,
+} from "@/repositories/botSettings";
+import {
   createProfileCacheRepository,
   type ProfileCacheRepository,
 } from "@/repositories/profileCache";
@@ -18,6 +22,7 @@ export interface Repositories {
   profileCache: ProfileCacheRepository;
   shareEvents: ShareEventRepository;
   adminActions: AdminActionsRepository;
+  botSettings: BotSettingsRepository;
 }
 
 export function createRepositories(tx: DatabaseTx): Repositories {
@@ -27,11 +32,13 @@ export function createRepositories(tx: DatabaseTx): Repositories {
     profileCache: createProfileCacheRepository(tx),
     shareEvents: createShareEventRepository(tx),
     adminActions: createAdminActionsRepository(tx),
+    botSettings: createBotSettingsRepository(tx),
   };
 }
 
 export type {
   AdminActionsRepository,
+  BotSettingsRepository,
   ProfileCacheRepository,
   ShareEventRepository,
   TweetCacheRepository,
