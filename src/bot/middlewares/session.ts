@@ -32,7 +32,10 @@ export function sessionMiddleware({
 }: Deps): MiddlewareFn<AppContext> {
   return async (ctx, next) => {
     await db.transaction(async (tx) => {
-      const repositories = createRepositories(tx);
+      // bot_settings must commit independently of this request transaction:
+      // if a Telegram reply fails after a toggle, rolling back would desync
+      // Postgres from the shared in-memory runtimeConfig.
+      const repositories = createRepositories(tx, { botSettingsDb: db });
       ctx.settings = settings;
       ctx.provider = provider;
       ctx.profileProvider = profileProvider;

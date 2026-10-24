@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AppContext } from "@/bot/context";
+import type { AppContext, RuntimeConfig } from "@/bot/context";
 import { adminComposer } from "@/bot/handlers/admin";
 import {
   SETTING_RUSSIAN_TRANSLATION_ENABLED,
@@ -21,6 +21,8 @@ interface InjectConfig {
   whitelistEnabled?: boolean;
   russianTranslationEnabled?: boolean;
   forPanel?: boolean;
+  /** When true, botSettings.setBool rejects (simulates DB failure). */
+  setBoolFails?: boolean;
 }
 
 function inject(
@@ -28,6 +30,7 @@ function inject(
   calls: FakeCacheCalls,
   actions: string[],
   settingsWrites: Array<{ key: string; value: boolean }>,
+  runtimeConfig: RuntimeConfig,
 ) {
   return (ctx: AppContext) => {
     ctx.services = {
@@ -79,6 +82,9 @@ function inject(
       },
       botSettings: {
         async setBool(key: string, value: boolean) {
+          if (config.setBoolFails) {
+            throw new Error("simulated bot_settings write failure");
+          }
           settingsWrites.push({ key, value });
         },
       },
@@ -87,10 +93,7 @@ function inject(
       cacheCleanupEnabled: false,
       cacheCleanupIntervalSeconds: 3600,
     } as unknown as AppContext["settings"];
-    ctx.runtimeConfig = {
-      whitelistEnabled: config.whitelistEnabled ?? true,
-      russianTranslationEnabled: config.russianTranslationEnabled ?? false,
-    };
+    ctx.runtimeConfig = runtimeConfig;
   };
 }
 
@@ -130,11 +133,15 @@ function harness(config: InjectConfig = {}) {
   const calls: FakeCacheCalls = { clearAll: 0, clearExpired: 0 };
   const actions: string[] = [];
   const settingsWrites: Array<{ key: string; value: boolean }> = [];
+  const runtimeConfig: RuntimeConfig = {
+    whitelistEnabled: config.whitelistEnabled ?? true,
+    russianTranslationEnabled: config.russianTranslationEnabled ?? false,
+  };
   const h = createHarness({
     register: (bot) => bot.use(adminComposer),
-    inject: inject(config, calls, actions, settingsWrites),
+    inject: inject(config, calls, actions, settingsWrites, runtimeConfig),
   });
-  return { h, calls, actions, settingsWrites };
+  return { h, calls, actions, settingsWrites, runtimeConfig };
 }
 
 describe("admin /clearcache", () => {
@@ -170,37 +177,42 @@ describe("admin /clearcache", () => {
 });
 
 describe("admin runtime toggles persist", () => {
-  it("persists whitelist on/off to bot settings", async () => {
+  it("persists whitelist on/off then publishes runtimeConfig", async () => {
     const on = harness({ isAdmin: true, whitelistEnabled: false });
     await on.h.handle(adminText("/whitelist on"));
     expect(on.settingsWrites).toEqual([{ key: SETTING_WHITELIST_ENABLED, value: true }]);
+    expect(on.runtimeConfig.whitelistEnabled).toBe(true);
     expect(String(on.h.lastCall("sendMessage")!.payload.text)).toContain("Whitelist включён");
 
     const off = harness({ isAdmin: true, whitelistEnabled: true });
     await off.h.handle(adminText("/whitelist off"));
     expect(off.settingsWrites).toEqual([{ key: SETTING_WHITELIST_ENABLED, value: false }]);
+    expect(off.runtimeConfig.whitelistEnabled).toBe(false);
   });
 
-  it("persists translate on/off to bot settings", async () => {
+  it("persists translate on/off then publishes runtimeConfig", async () => {
     const on = harness({ isAdmin: true, russianTranslationEnabled: false });
     await on.h.handle(adminText("/translate on"));
     expect(on.settingsWrites).toEqual([{ key: SETTING_RUSSIAN_TRANSLATION_ENABLED, value: true }]);
+    expect(on.runtimeConfig.russianTranslationEnabled).toBe(true);
 
     const off = harness({ isAdmin: true, russianTranslationEnabled: true });
     await off.h.handle(adminText("/translate off"));
     expect(off.settingsWrites).toEqual([
       { key: SETTING_RUSSIAN_TRANSLATION_ENABLED, value: false },
     ]);
+    expect(off.runtimeConfig.russianTranslationEnabled).toBe(false);
   });
 
-  it("persists panel translate toggle to bot settings", async () => {
-    const { h, settingsWrites } = harness({
+  it("persists panel translate toggle then publishes runtimeConfig", async () => {
+    const { h, settingsWrites, runtimeConfig } = harness({
       isAdmin: true,
       russianTranslationEnabled: false,
       forPanel: true,
     });
     await h.handle(adminCallback("panel:translate:toggle"));
     expect(settingsWrites).toEqual([{ key: SETTING_RUSSIAN_TRANSLATION_ENABLED, value: true }]);
+    expect(runtimeConfig.russianTranslationEnabled).toBe(true);
     expect(String(h.lastCall("answerCallbackQuery")!.payload.text)).toContain("включён");
   });
 
@@ -212,5 +224,31 @@ describe("admin runtime toggles persist", () => {
     const translate = harness({ isAdmin: true });
     await translate.h.handle(adminText("/translate"));
     expect(translate.settingsWrites).toEqual([]);
+  });
+
+  it("does not mutate runtimeConfig when bot_settings write fails", async () => {
+    const { h, settingsWrites, runtimeConfig } = harness({
+      isAdmin: true,
+      whitelistEnabled: false,
+      setBoolFails: true,
+    });
+    await h.handle(adminText("/whitelist on"));
+    expect(settingsWrites).toEqual([]);
+    expect(runtimeConfig.whitelistEnabled).toBe(false);
+    expect(String(h.lastCall("sendMessage")!.payload.text)).toContain("Не удалось сохранить");
+  });
+
+  it("does not mutate runtimeConfig when panel persist fails", async () => {
+    const { h, settingsWrites, runtimeConfig } = harness({
+      isAdmin: true,
+      russianTranslationEnabled: false,
+      setBoolFails: true,
+    });
+    await h.handle(adminCallback("panel:translate:toggle"));
+    expect(settingsWrites).toEqual([]);
+    expect(runtimeConfig.russianTranslationEnabled).toBe(false);
+    expect(String(h.lastCall("answerCallbackQuery")!.payload.text)).toContain(
+      "Не удалось сохранить",
+    );
   });
 });

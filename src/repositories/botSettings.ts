@@ -1,11 +1,15 @@
 import { eq, sql as drizzleSql } from "drizzle-orm";
 
 import type { RuntimeConfig } from "@/bot/context";
-import type { DatabaseTx } from "@/db/client";
+import type { Database, DatabaseTx } from "@/db/client";
 import { botSettings } from "@/db/schema";
 
 export const SETTING_WHITELIST_ENABLED = "whitelist_enabled";
 export const SETTING_RUSSIAN_TRANSLATION_ENABLED = "russian_translation_enabled";
+
+/** Root `Database` or a request `DatabaseTx`. Prefer root db for toggles so
+ * writes commit independently of sessionMiddleware's enclosing transaction. */
+export type BotSettingsDb = Database | DatabaseTx;
 
 export function resolveRuntimeConfigFromStored(
   storedWhitelist: boolean | null,
@@ -29,10 +33,10 @@ export interface BotSettingsRepository {
   loadOrSeedRuntimeConfig(defaults: RuntimeConfig): Promise<RuntimeConfig>;
 }
 
-export function createBotSettingsRepository(tx: DatabaseTx): BotSettingsRepository {
+export function createBotSettingsRepository(db: BotSettingsDb): BotSettingsRepository {
   return {
     async getBool(key): Promise<boolean | null> {
-      const rows = await tx
+      const rows = await db
         .select({ valueBool: botSettings.valueBool })
         .from(botSettings)
         .where(eq(botSettings.key, key))
@@ -41,7 +45,7 @@ export function createBotSettingsRepository(tx: DatabaseTx): BotSettingsReposito
     },
 
     async setBool(key, value): Promise<void> {
-      await tx
+      await db
         .insert(botSettings)
         .values({ key, valueBool: value })
         .onConflictDoUpdate({

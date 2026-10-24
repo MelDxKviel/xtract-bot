@@ -1,4 +1,4 @@
-import type { DatabaseTx } from "@/db/client";
+import type { Database, DatabaseTx } from "@/db/client";
 
 import {
   createAdminActionsRepository,
@@ -25,14 +25,23 @@ export interface Repositories {
   botSettings: BotSettingsRepository;
 }
 
-export function createRepositories(tx: DatabaseTx): Repositories {
+export interface CreateRepositoriesOptions {
+  /** When set (typically the root db), bot_settings writes commit outside the
+   * request transaction so a failed Telegram reply cannot roll them back. */
+  botSettingsDb?: Database | DatabaseTx;
+}
+
+export function createRepositories(
+  tx: DatabaseTx,
+  options: CreateRepositoriesOptions = {},
+): Repositories {
   return {
     users: createUserRepository(tx),
     tweetCache: createTweetCacheRepository(tx),
     profileCache: createProfileCacheRepository(tx),
     shareEvents: createShareEventRepository(tx),
     adminActions: createAdminActionsRepository(tx),
-    botSettings: createBotSettingsRepository(tx),
+    botSettings: createBotSettingsRepository(options.botSettingsDb ?? tx),
   };
 }
 
