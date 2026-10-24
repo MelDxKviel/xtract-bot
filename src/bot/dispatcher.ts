@@ -4,6 +4,7 @@ import type { Settings } from "@/config";
 import type { Database } from "@/db/client";
 import type { TweetProvider } from "@/providers/base";
 import type { ProfileProvider } from "@/providers/profileBase";
+import { createBotSettingsRepository } from "@/repositories/botSettings";
 import type { Translator } from "@/services/translation";
 
 import { createRateLimiter } from "@/services/rateLimit";
@@ -24,19 +25,23 @@ interface BuildBotDeps {
   translator: Translator;
 }
 
-export function buildBot({
+export async function buildBot({
   settings,
   db,
   provider,
   profileProvider,
   translator,
-}: BuildBotDeps): Bot<AppContext> {
+}: BuildBotDeps): Promise<Bot<AppContext>> {
   const bot = new Bot<AppContext>(settings.botToken);
 
-  const runtimeConfig: RuntimeConfig = {
-    whitelistEnabled: settings.accessWhitelistEnabled,
-    russianTranslationEnabled: settings.russianTranslationEnabled,
-  };
+  const runtimeConfig: RuntimeConfig = await db.transaction(async (tx) => {
+    const botSettings = createBotSettingsRepository(tx);
+    return botSettings.loadOrSeedRuntimeConfig({
+      whitelistEnabled: settings.accessWhitelistEnabled,
+      russianTranslationEnabled: settings.russianTranslationEnabled,
+    });
+  });
+
   bot.use(
     sessionMiddleware({ db, settings, provider, profileProvider, translator, runtimeConfig }),
   );

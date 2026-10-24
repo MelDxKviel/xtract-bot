@@ -1,8 +1,13 @@
 import { Composer, InlineKeyboard } from "grammy";
 
 import type { AppContext } from "@/bot/context";
+import {
+  SETTING_RUSSIAN_TRANSLATION_ENABLED,
+  SETTING_WHITELIST_ENABLED,
+} from "@/repositories/botSettings";
 
 const PANEL_TOGGLE_TRANSLATE = "panel:translate:toggle";
+const PERSIST_ERROR_REPLY = "❌ Не удалось сохранить настройку. Попробуйте ещё раз.";
 
 export const adminComposer = new Composer<AppContext>();
 
@@ -66,9 +71,12 @@ privateChat.command("whitelist", async (ctx) => {
   if (!(await requireAdmin(ctx))) return;
   const arg = ctx.match?.trim().toLowerCase();
   if (arg === "on") {
+    // Persist first (independent commit), then publish to runtimeConfig, then reply.
+    if (!(await commitRuntimeSetting(ctx, SETTING_WHITELIST_ENABLED, true))) return;
     ctx.runtimeConfig.whitelistEnabled = true;
     await ctx.reply("✅ Whitelist включён.");
   } else if (arg === "off") {
+    if (!(await commitRuntimeSetting(ctx, SETTING_WHITELIST_ENABLED, false))) return;
     ctx.runtimeConfig.whitelistEnabled = false;
     await ctx.reply("🔓 Whitelist выключен — доступ открыт для всех.");
   } else {
@@ -86,9 +94,11 @@ privateChat.command("translate", async (ctx) => {
   if (!(await requireAdmin(ctx))) return;
   const arg = ctx.match?.trim().toLowerCase();
   if (arg === "on") {
+    if (!(await commitRuntimeSetting(ctx, SETTING_RUSSIAN_TRANSLATION_ENABLED, true))) return;
     ctx.runtimeConfig.russianTranslationEnabled = true;
     await ctx.reply("✅ Перевод на русский (beta) включён.");
   } else if (arg === "off") {
+    if (!(await commitRuntimeSetting(ctx, SETTING_RUSSIAN_TRANSLATION_ENABLED, false))) return;
     ctx.runtimeConfig.russianTranslationEnabled = false;
     await ctx.reply("🔕 Перевод на русский (beta) выключен.");
   } else {
@@ -118,7 +128,15 @@ privateChat.callbackQuery(PANEL_TOGGLE_TRANSLATE, async (ctx) => {
     });
     return;
   }
-  ctx.runtimeConfig.russianTranslationEnabled = !ctx.runtimeConfig.russianTranslationEnabled;
+  const nextEnabled = !ctx.runtimeConfig.russianTranslationEnabled;
+  if (
+    !(await commitRuntimeSetting(ctx, SETTING_RUSSIAN_TRANSLATION_ENABLED, nextEnabled, {
+      viaCallback: true,
+    }))
+  ) {
+    return;
+  }
+  ctx.runtimeConfig.russianTranslationEnabled = nextEnabled;
   try {
     await ctx.editMessageText(await renderPanelText(ctx), {
       parse_mode: "HTML",
@@ -128,9 +146,7 @@ privateChat.callbackQuery(PANEL_TOGGLE_TRANSLATE, async (ctx) => {
     // ignore "message is not modified" or other edit errors
   }
   await ctx.answerCallbackQuery({
-    text: ctx.runtimeConfig.russianTranslationEnabled
-      ? "✅ Перевод на русский включён"
-      : "🔕 Перевод на русский выключен",
+    text: nextEnabled ? "✅ Перевод на русский включён" : "🔕 Перевод на русский выключен",
   });
 });
 
@@ -186,6 +202,38 @@ privateChat.command("health", async (ctx) => {
       `🔌 Provider: ${providerOk ? "✅ ok" : "❌ error"}`,
   );
 });
+
+/**
+ * Persist a runtime toggle via botSettings (root db, independent of the
+ * request transaction). Returns false without mutating runtimeConfig when
+ * the write fails.
+ */
+async function commitRuntimeSetting(
+  ctx: AppContext,
+  key: string,
+  value: boolean,
+  options: { viaCallback?: boolean } = {},
+): Promise<boolean> {
+  try {
+    await ctx.repositories.botSettings.setBool(key, value);
+    return true;
+  } catch {
+    if (options.viaCallback) {
+      try {
+        await ctx.answerCallbackQuery({ text: PERSIST_ERROR_REPLY, show_alert: true });
+      } catch {
+        // ignore secondary Telegram errors
+      }
+    } else {
+      try {
+        await ctx.reply(PERSIST_ERROR_REPLY);
+      } catch {
+        // ignore secondary Telegram errors
+      }
+    }
+    return false;
+  }
+}
 
 async function renderPanelText(ctx: AppContext): Promise<string> {
   const [summary, allowedCount, cacheCount, profileCacheCount] = await Promise.all([

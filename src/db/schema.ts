@@ -108,9 +108,18 @@ export const adminActions = pgTable(
   }),
 );
 
+export const botSettings = pgTable("bot_settings", {
+  key: text("key").primaryKey(),
+  valueBool: boolean("value_bool").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
 export type UserRow = typeof users.$inferSelect;
 export type NewUserRow = typeof users.$inferInsert;
 export type TweetCacheRow = typeof tweetCache.$inferSelect;
 export type ProfileCacheRow = typeof profileCache.$inferSelect;
 export type ShareEventRow = typeof shareEvents.$inferSelect;
 export type AdminActionRow = typeof adminActions.$inferSelect;
+export type BotSettingsRow = typeof botSettings.$inferSelect;

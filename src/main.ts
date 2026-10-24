@@ -20,7 +20,7 @@ async function main(): Promise<void> {
   const provider = createTweetProvider(settings);
   const profileProvider = createProfileProvider(settings);
   const translator = createTranslator({ timeoutSeconds: settings.translationTimeoutSeconds });
-  const bot = buildBot({ settings, db: dbHandle.db, provider, profileProvider, translator });
+  const bot = await buildBot({ settings, db: dbHandle.db, provider, profileProvider, translator });
 
   // Apply HTML parse mode and disabled link preview as Bot API defaults.
   bot.api.config.use((prev, method, payload, signal) => {

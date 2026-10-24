@@ -188,6 +188,11 @@ registers the webhook on startup, and exposes `GET /health` for probes.
 | `true`                           | Only admins and whitelisted users can use the bot                                |
 | `false`                          | The bot is open to all users; admin commands are still restricted to `ADMIN_IDS` |
 
+`ACCESS_WHITELIST_ENABLED` and `RUSSIAN_TRANSLATION_ENABLED` are **bootstrap defaults** used on
+first start (or when keys are missing in the DB). After `/whitelist`, `/translate`, or the
+`/panel` toggle, flags are stored in `bot_settings` and survive restarts/deploys as long as the
+Postgres volume is kept. Wiping the DB volume reseeds from `.env`.
+
 ---
 
 ## 💻 Local Run
@@ -236,13 +241,16 @@ bun run format        # prettier --write
 
 ### 🛡️ Admin
 
-| Command                | Description                      |
-| ---------------------- | -------------------------------- |
-| `/allow <telegram_id>` | Add a user to the whitelist      |
-| `/deny <telegram_id>`  | Remove a user from the whitelist |
-| `/users`               | List all allowed users           |
-| `/stats`               | Overall statistics and top users |
-| `/stats <telegram_id>` | Statistics for a specific user   |
-| `/health`              | Check DB and provider health     |
+| Command                | Description                                     |
+| ---------------------- | ----------------------------------------------- | -------------------------------------------- |
+| `/allow <telegram_id>` | Add a user to the whitelist                     |
+| `/deny <telegram_id>`  | Remove a user from the whitelist                |
+| `/users`               | List all allowed users                          |
+| `/whitelist [on        | off]`                                           | Toggle whitelist (persisted in DB)           |
+| `/translate [on        | off]`                                           | Toggle Russian translation (persisted in DB) |
+| `/panel`               | Control panel; translation button writes DB too |
+| `/stats`               | Overall statistics and top users                |
+| `/stats <telegram_id>` | Statistics for a specific user                  |
+| `/health`              | Check DB and provider health                    |
 
 ---
