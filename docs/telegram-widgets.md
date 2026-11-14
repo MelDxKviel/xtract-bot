@@ -1,5 +1,16 @@
 # Experimental Telegram post cards
 
+**Availability correction — November 14, 2026:** Telegram has disabled widgets for
+general bots even in private chats. A Telegram maintainer confirmed this on
+[November 13 in telegram-bot-api issue #947](https://github.com/tdlib/telegram-bot-api/issues/947).
+The guide below still describes the intended API; it is not proof of production
+availability. A real request from `@twxtract_test_bot` returned
+`400 INPUT_MEDIA_WIDGET_NOT_ALLOWED` on November 14. The bot explicitly explains
+this restriction before using an ordinary post, and backs off widget requests
+for 15 minutes. PR Deploy performs a real delivery check and reports a blocked
+feature separately from a running bot. It does not report accepted widget
+delivery based on the existence of the API method or mocked tests.
+
 Telegram introduced HTML Widgets in Bot API 10.4 on November 9, 2026:
 
 - [Widget guide and supported HTML/CSS/JavaScript](https://core.telegram.org/bots/widgets)

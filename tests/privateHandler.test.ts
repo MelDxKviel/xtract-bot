@@ -95,6 +95,10 @@ interface InjectConfig {
 }
 
 function inject(config: InjectConfig = {}): (ctx: AppContext) => void {
+  const runtimeConfig: AppContext["runtimeConfig"] = {
+    whitelistEnabled: true,
+    russianTranslationEnabled: false,
+  };
   const tweetShare: Pick<TweetShareService, "processText" | "processUrl"> = {
     async processText(text: string, _options: ProcessOptions): Promise<ShareResult> {
       config.onProcess?.(text);
@@ -124,7 +128,7 @@ function inject(config: InjectConfig = {}): (ctx: AppContext) => void {
       tweetShare,
       profileShare,
     } as unknown as AppContext["services"];
-    ctx.runtimeConfig = { whitelistEnabled: true, russianTranslationEnabled: false };
+    ctx.runtimeConfig = runtimeConfig;
   };
 }
 
@@ -157,6 +161,23 @@ const TWEET_URL = "https://x.com/user/status/123";
 const PROFILE_URL = "https://x.com/user";
 
 describe("private HTML widget delivery", () => {
+  it("explains Telegram's widget block and backs off instead of silently repeating the failure", async () => {
+    const h = harness(
+      { widgets: true },
+      {
+        failMethods: ["sendWidget"],
+        failDescriptions: { sendWidget: "Bad Request: INPUT_MEDIA_WIDGET_NOT_ALLOWED" },
+      },
+    );
+    await h.handle(privateText(TWEET_URL));
+    await h.handle(privateText(TWEET_URL));
+    expect(h.callsTo("sendWidget")).toHaveLength(1);
+    expect(h.callsTo("sendRichMessage")).toHaveLength(2);
+    expect(h.callsTo("sendMessage").map((call) => call.payload.text)).toEqual([
+      expect.stringContaining("не разрешает HTML-карточки"),
+      expect.stringContaining("не разрешает HTML-карточки"),
+    ]);
+  });
   it("reports a missing photo in a partially delivered album", async () => {
     const data = tweet({
       media: [

@@ -51,6 +51,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Deploy via SSH
+        id: deploy_bot
         uses: appleboy/ssh-action@v1
         env:
           PR_BOT_TOKEN: ${{ secrets.PR_BOT_TOKEN }}
@@ -63,6 +64,7 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
+          capture_stdout: true
           envs: PR_BOT_TOKEN,PR_ADMIN_IDS,GH_TOKEN,GH_ACTOR,REPO,PR_NUM
           script: |
             set -e
@@ -111,7 +113,6 @@ jobs:
               echo "PR bot did not reach Telegram polling readiness after migrations."
               exit 1
             fi
-            docker exec "xtract-bot-pr-${PR_NUM}" bun run src/services/widgetApiProbe.ts
             docker exec -e WIDGET_SMOKE_BOT_USERNAME=twxtract_test_bot "xtract-bot-pr-${PR_NUM}" bun run src/services/widgetSmoke.ts
 
       - name: Comment on PR
@@ -119,6 +120,12 @@ jobs:
         with:
           script: |
             const sha = '${{ github.event.pull_request.head.sha }}'.substring(0, 7);
+            const deployOutput = ${{ toJSON(steps.deploy_bot.outputs.stdout || '') }};
+            const widgetLine = deployOutput.includes('"status":"blocked_by_telegram"')
+              ? '⚠️ **HTML widgets are blocked by Telegram** (`INPUT_MEDIA_WIDGET_NOT_ALLOWED`). Ordinary-post fallback is active. [Telegram confirmation](https://github.com/tdlib/telegram-bot-api/issues/947).'
+              : deployOutput.includes('"status":"delivered"')
+                ? '✅ HTML widget delivery was accepted by Telegram for the test administrator.'
+                : '⚠️ HTML widget delivery was not verified.';
             const botUsername = '${{ vars.PR_BOT_USERNAME }}'.replace(/^@/, '');
             const botLine = botUsername
               ? `\n🔗 **Bot:** [@${botUsername}](https://t.me/${botUsername})`
@@ -130,6 +137,7 @@ jobs:
               body: [
                 `🤖 **Test environment deployed** for \`${sha}\``,
                 botLine,
+                widgetLine,
                 '',
                 '> `TWEET_PROVIDER=public_embed` · `ACCESS_WHITELIST_ENABLED=false` · `POST_WIDGETS_ENABLED=true`',
               ].join('\n'),

@@ -40,10 +40,26 @@ async function main(): Promise<void> {
       reply_markup: originalPostButton(tweet.url),
     });
     console.log(
-      JSON.stringify({ event: "widget_smoke", sent: true, messageId: result.message_id }),
+      JSON.stringify({
+        event: "widget_smoke",
+        status: "delivered",
+        sent: true,
+        messageId: result.message_id,
+      }),
     );
   } catch (error) {
     if (error instanceof GrammyError) {
+      if (error.description.includes("INPUT_MEDIA_WIDGET_NOT_ALLOWED")) {
+        console.log(
+          JSON.stringify({
+            event: "widget_smoke",
+            status: "blocked_by_telegram",
+            sent: false,
+            reason: "INPUT_MEDIA_WIDGET_NOT_ALLOWED",
+          }),
+        );
+        return;
+      }
       // This request contains only the fixed public smoke fixture above.
       console.error(
         JSON.stringify({

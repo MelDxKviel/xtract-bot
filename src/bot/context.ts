@@ -20,6 +20,8 @@ export interface AppServices {
 export interface RuntimeConfig {
   whitelistEnabled: boolean;
   russianTranslationEnabled: boolean;
+  /** Runtime-only backoff after Telegram disables widgets for this bot. */
+  postWidgetsBlockedUntil?: number;
 }
 
 export type AppContext = Context & {

@@ -209,13 +209,15 @@ async function sendShareResult(
   }
 
   const url = result.tweet?.url ?? result.normalizedUrl ?? "";
-  if (
-    !classic &&
-    ctx.settings?.postWidgetsEnabled &&
-    result.tweet &&
-    (await replyWithWidget(ctx, result.post, result.tweet, textOnly))
-  )
-    return;
+  if (!classic && ctx.settings?.postWidgetsEnabled && result.tweet) {
+    const blocked = (ctx.runtimeConfig.postWidgetsBlockedUntil ?? 0) > Date.now();
+    if (!blocked && (await replyWithWidget(ctx, result.post, result.tweet, textOnly))) return;
+    if ((ctx.runtimeConfig.postWidgetsBlockedUntil ?? 0) > Date.now()) {
+      await ctx.reply(
+        "Telegram сейчас не разрешает HTML-карточки этому боту. Ниже — обычный пост.",
+      );
+    }
+  }
   await replyWithPost(ctx, result.post, originalPostButton(url), textOnly);
 }
 
@@ -255,7 +257,15 @@ async function replyWithWidget(
     });
   } catch (error) {
     if (!(error instanceof GrammyError)) throw error;
-    console.error("failed to send post widget", safeError(error));
+    const reason = /INPUT_MEDIA_WIDGET_[A-Z_]+/.exec(error.description)?.[0] ?? "rejected";
+    console.error("failed to send post widget", {
+      ...safeError(error),
+      telegramCode: error.error_code,
+      reason,
+    });
+    if (reason === "INPUT_MEDIA_WIDGET_NOT_ALLOWED") {
+      ctx.runtimeConfig.postWidgetsBlockedUntil = Date.now() + 15 * 60 * 1000;
+    }
     return false;
   }
   // Widgets cannot play media. Keep every segment's files as real Telegram
