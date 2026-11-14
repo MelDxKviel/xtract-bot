@@ -21,6 +21,10 @@ const avatar =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKfQAAAAASUVORK5CYII=";
 
 describe("HTML post widgets", () => {
+  it("uses the rich fallback for complex-script text beyond the client budget", () => {
+    const data = { ...tweet, text: "ا".repeat(9000) };
+    expect(buildPostWidget(formatTweet(data), data)).toBeNull();
+  });
   it("is opt-in and can be enabled just for the PR deployment", () => {
     const env = { BOT_TOKEN: "12345:TEST", DATABASE_URL: "postgres://localhost/test" };
     expect(loadSettings(env).postWidgetsEnabled).toBe(false);

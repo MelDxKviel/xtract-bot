@@ -65,6 +65,10 @@ export function buildPostWidget(
   const fullText = widgetText(post);
   const heading = `𝕏 ${name} (@${tweet.authorUsername})`;
   const text = fullText.startsWith(heading) ? fullText.slice(heading.length).trimStart() : fullText;
+  // The client enforces additional text budgets even when the server accepts
+  // the compressed HTML. Keep complex scripts below its 8192 UTF-16-unit cap.
+  if (text.length > 7600 && /[\u0590-\u0fff\u1780-\u18af\ua800-\uabff]/u.test(text + name))
+    return null;
   const initials = Array.from(name.trim()).slice(0, 2).join("").toUpperCase() || "X";
   const authorUrl = widgetLink(tweet.authorUrl);
   const url = widgetLink(tweet.url);
