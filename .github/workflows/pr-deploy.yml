@@ -112,6 +112,7 @@ jobs:
               exit 1
             fi
             docker exec "xtract-bot-pr-${PR_NUM}" bun run src/services/widgetApiProbe.ts
+            docker exec -e WIDGET_SMOKE_BOT_USERNAME=twxtract_test_bot "xtract-bot-pr-${PR_NUM}" bun run src/services/widgetSmoke.ts
 
       - name: Comment on PR
         uses: actions/github-script@v7
