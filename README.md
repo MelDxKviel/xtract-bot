@@ -34,6 +34,8 @@ caches the result in PostgreSQL, and returns a neatly formatted message.
 
 ## ✨ Features
 
+- 🎨 **Experimental HTML post cards** with author avatars, themed pagination and native media in private chats. Enabled on PR test bots; see [Telegram Widgets](docs/telegram-widgets.md) for limits and configuration.
+
 - 🔗 **URL support** for `x.com`, `twitter.com`, and embed-fixer mirrors — `vxtwitter.com`, `fixvx.com`, `fxtwitter.com`, `fixupx.com`, `twittpr.com`, `xfixup.com`, `pxtwitter.com`, `twitterez.com` (and any subdomain of these, e.g. `mobile.twitter.com`)
 - 🧩 **Parses** `/status/<id>` and `/statuses/<id>` paths
 - 🧵 **Thread unrolling** — collects a self-reply chain into a single post

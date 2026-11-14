@@ -6,6 +6,7 @@ export interface Settings {
   adminIds: ReadonlySet<number>;
   accessWhitelistEnabled: boolean;
   russianTranslationEnabled: boolean;
+  postWidgetsEnabled: boolean;
   tweetProvider: TweetProviderName;
   tweetCacheTtlSeconds: number;
   profileCacheTtlSeconds: number;
@@ -50,6 +51,7 @@ export function loadSettings(env: Record<string, string | undefined> = process.e
     adminIds,
     accessWhitelistEnabled: parseBool(env["ACCESS_WHITELIST_ENABLED"], true),
     russianTranslationEnabled: parseBool(env["RUSSIAN_TRANSLATION_ENABLED"], false),
+    postWidgetsEnabled: parseBool(env["POST_WIDGETS_ENABLED"], false),
     tweetProvider: provider,
     tweetCacheTtlSeconds: parseInt(env["TWEET_CACHE_TTL_SECONDS"], 86_400),
     profileCacheTtlSeconds: parseInt(env["PROFILE_CACHE_TTL_SECONDS"], 21_600),

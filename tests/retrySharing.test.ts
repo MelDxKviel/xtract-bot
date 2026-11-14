@@ -329,33 +329,39 @@ describe("private share retries", () => {
     expect(h.providerCalls).toHaveLength(1);
   });
 
-  it("answers the callback without fetching if access has been revoked", async () => {
-    const h = harness();
-    await h.handle(privateText(POST_URL));
-    h.state.allowed = false;
-    await h.handle(callback("retry:tweet:123"));
-    expect(h.lastCall("answerCallbackQuery")?.payload).toMatchObject({
-      callback_query_id: "CB",
-      text: expect.stringContaining("Доступ закрыт"),
-      show_alert: true,
-    });
-    expect(h.providerCalls).toHaveLength(1);
-    expect(h.callsTo("sendMessage")).toHaveLength(1);
-  });
+  it.each(["tweet", "classic", "classictext"])(
+    "blocks %s callbacks if access has been revoked",
+    async (kind) => {
+      const h = harness();
+      await h.handle(privateText(POST_URL));
+      h.state.allowed = false;
+      await h.handle(callback(`retry:${kind}:123`));
+      expect(h.lastCall("answerCallbackQuery")?.payload).toMatchObject({
+        callback_query_id: "CB",
+        text: expect.stringContaining("Доступ закрыт"),
+        show_alert: true,
+      });
+      expect(h.providerCalls).toHaveLength(1);
+      expect(h.callsTo("sendMessage")).toHaveLength(1);
+    },
+  );
 
-  it("uses the same budget as the original message and answers a blocked click", async () => {
-    const h = harness({ maxRequests: 1 });
-    await h.handle(privateText(POST_URL));
-    h.state.tweetError = null;
-    await h.handle(callback("retry:tweet:123"));
-    expect(h.lastCall("answerCallbackQuery")?.payload).toMatchObject({
-      text: expect.stringContaining("Слишком много запросов"),
-      show_alert: true,
-    });
-    expect(h.providerCalls).toHaveLength(1);
-    expect(h.callsTo("sendRichMessage")).toHaveLength(0);
-    expect(h.callsTo("sendMessage")).toHaveLength(1);
-  });
+  it.each(["tweet", "classic", "classictext"])(
+    "uses the same rate limit for %s callbacks",
+    async (kind) => {
+      const h = harness({ maxRequests: 1 });
+      await h.handle(privateText(POST_URL));
+      h.state.tweetError = null;
+      await h.handle(callback(`retry:${kind}:123`));
+      expect(h.lastCall("answerCallbackQuery")?.payload).toMatchObject({
+        text: expect.stringContaining("Слишком много запросов"),
+        show_alert: true,
+      });
+      expect(h.providerCalls).toHaveLength(1);
+      expect(h.callsTo("sendRichMessage")).toHaveLength(0);
+      expect(h.callsTo("sendMessage")).toHaveLength(1);
+    },
+  );
 
   it("counts a retry against subsequent ordinary shares", async () => {
     const h = harness({ maxRequests: 1, tweetError: null });

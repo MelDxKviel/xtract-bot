@@ -90,9 +90,26 @@ jobs:
               -e DATABASE_URL="postgres://xtract:xtract@127.0.0.1:5432/xtract_pr_${PR_NUM}" \
               -e ADMIN_IDS="$PR_ADMIN_IDS" \
               -e TWEET_PROVIDER="public_embed" \
+              -e POST_WIDGETS_ENABLED="true" \
               -e ACCESS_WHITELIST_ENABLED="false" \
               "ghcr.io/${REPO_LC}:pr-${PR_NUM}" \
               sh -c "bun run src/db/migrate.ts && bun run src/main.ts"
+
+            # A detached container ID alone does not mean migrations or polling succeeded.
+            READY=false
+            for attempt in $(seq 1 20); do
+              if [ "$(docker inspect -f '{{.State.Running}}' "xtract-bot-pr-${PR_NUM}")" = "true" ] && \
+                 [ "$(docker inspect -f '{{.RestartCount}}' "xtract-bot-pr-${PR_NUM}")" = "0" ] && \
+                 docker logs "xtract-bot-pr-${PR_NUM}" 2>&1 | grep -q 'bot is running'; then
+                READY=true
+                break
+              fi
+              sleep 3
+            done
+            if [ "$READY" != "true" ]; then
+              echo "PR bot did not reach Telegram polling readiness after migrations."
+              exit 1
+            fi
 
       - name: Comment on PR
         uses: actions/github-script@v7
@@ -111,7 +128,7 @@ jobs:
                 `🤖 **Test environment deployed** for \`${sha}\``,
                 botLine,
                 '',
-                '> `TWEET_PROVIDER=public_embed` · `ACCESS_WHITELIST_ENABLED=false`',
+                '> `TWEET_PROVIDER=public_embed` · `ACCESS_WHITELIST_ENABLED=false` · `POST_WIDGETS_ENABLED=true`',
               ].join('\n'),
             });
 

@@ -11,10 +11,12 @@ import {
   withoutRichMedia,
 } from "@/formatters/richMessage";
 import type { TelegramPost } from "@/formatters/telegram";
+import { buildPostWidget, widgetMediaBatches } from "@/formatters/widget";
 import type { TweetMedia } from "@/providers/base";
 import type { ProfileShareResult } from "@/services/profileShare";
 import type { ShareResult } from "@/services/tweetShare";
 import { downloadVideo } from "@/services/videoDownload";
+import { loadWidgetAvatar } from "@/services/widgetAvatar";
 import { extractFirstProfileUrl, extractFirstTweetUrl } from "@/utils/urls";
 
 const INVALID_LINK_TEXT =
@@ -52,6 +54,10 @@ privateChat.command("help", async (ctx) => {
     "📨 Отправьте ссылку на пост X/Twitter в личный чат с ботом.\n" +
     "📝 /text &lt;ссылка на пост&gt; — текст, опрос и контекст без фото и видео. " +
     "Треды разворачиваются по настройкам бота.\n" +
+    (ctx.settings?.postWidgetsEnabled
+      ? "🎨 Посты оформляются HTML-карточкой. Листайте длинный текст стрелками; " +
+        "фото и видео придут ниже. Кнопка «Обычный пост» выдаст версию для пересылки.\n"
+      : "") +
     "👤 Отправьте ссылку на профиль (<code>https://x.com/user</code>) — бот оформит " +
     "карточку профиля.\n" +
     "🔄 При временной ошибке загрузки в личном чате нажмите «Повторить» под сообщением " +
@@ -124,7 +130,12 @@ privateChat.callbackQuery(/^retry:/, async (ctx) => {
     await sendProfileResult(ctx, await ctx.services.profileShare.processUrl(retry.parsed, options));
   } else {
     const result = await ctx.services.tweetShare.processUrl(retry.parsed, options);
-    await sendShareResult(ctx, result, retry.kind === "text");
+    await sendShareResult(
+      ctx,
+      result,
+      retry.kind === "text" || retry.kind === "classictext",
+      retry.kind === "classic" || retry.kind === "classictext",
+    );
   }
 });
 
@@ -180,6 +191,7 @@ async function sendShareResult(
   ctx: AppContext,
   result: ShareResult,
   textOnly = false,
+  classic = false,
 ): Promise<void> {
   if (result.status === "invalid_url") {
     await ctx.reply(INVALID_LINK_TEXT, { link_preview_options: DISABLED_LINK_PREVIEW });
@@ -190,14 +202,74 @@ async function sendShareResult(
       reply_markup: shareErrorKeyboard(
         result.normalizedUrl,
         result.errorCode,
-        textOnly ? "text" : "tweet",
+        classic ? (textOnly ? "classictext" : "classic") : textOnly ? "text" : "tweet",
       ),
     });
     return;
   }
 
   const url = result.tweet?.url ?? result.normalizedUrl ?? "";
+  if (
+    !classic &&
+    ctx.settings?.postWidgetsEnabled &&
+    result.tweet &&
+    (await replyWithWidget(ctx, result.post, result.tweet, textOnly))
+  )
+    return;
   await replyWithPost(ctx, result.post, originalPostButton(url), textOnly);
+}
+
+async function replyWithWidget(
+  ctx: AppContext,
+  post: TelegramPost,
+  tweet: NonNullable<ShareResult["tweet"]>,
+  textOnly: boolean,
+): Promise<boolean> {
+  if (textOnly) post = withoutRichMedia(post);
+  // Check text before doing any optional network work for the avatar.
+  if (!buildPostWidget(post, tweet)) return false;
+  const avatar = await loadWidgetAvatar(tweet.authorAvatarUrl);
+  const html = buildPostWidget(post, tweet, avatar);
+  if (!html) return false;
+  const button = originalPostButton(tweet.url);
+  const retryData = `retry:${textOnly ? "classictext" : "classic"}:${tweet.tweetId}`;
+  if (parseShareRetry(retryData)) button.row().text("📨 Обычный пост — для пересылки", retryData);
+  try {
+    // grammY's current types predate Bot API 10.4. Use its raw API so the
+    // normal transport, transformers and GrammyError handling still apply.
+    const raw = ctx.api.raw as unknown as {
+      sendWidget(payload: {
+        chat_id: number;
+        html: string;
+        caption: string;
+        reply_markup: InlineKeyboard;
+        message_thread_id?: number;
+      }): Promise<unknown>;
+    };
+    await raw.sendWidget({
+      chat_id: ctx.chat!.id,
+      message_thread_id: ctx.msg?.message_thread_id,
+      html,
+      caption: "HTML-карточка · для пересылки нажмите «Обычный пост».",
+      reply_markup: button,
+    });
+  } catch (error) {
+    if (!(error instanceof GrammyError)) throw error;
+    console.error("failed to send post widget", safeError(error));
+    return false;
+  }
+  // Widgets cannot play media. Keep every segment's files as real Telegram
+  // attachments, in albums of at most ten, with the existing upload retry.
+  for (const batch of widgetMediaBatches(post)) {
+    const caption = `${batch.label}\n${post.linkHtml}`;
+    await sendMedia(ctx, batch.media, {
+      caption,
+      captionGroup: caption,
+      fallbackText: "⚠️ Не удалось отправить вложения. Откройте оригинал.",
+      replyMarkup: originalPostButton(tweet.url),
+    });
+  }
+  return true;
 }
 
 async function sendProfileResult(ctx: AppContext, result: ProfileShareResult): Promise<void> {
@@ -301,6 +373,7 @@ async function sendMedia(
   let captionSent = false;
   let anySent = false;
   let videoFailed = false;
+  let photoFailed = false;
   for (const item of media) {
     const itemCaption = captionSent ? null : options.caption;
     const itemMarkup = captionSent ? null : options.replyMarkup;
@@ -309,6 +382,8 @@ async function sendMedia(
       if (itemCaption !== null) captionSent = true;
     } else if (item.type !== "photo") {
       videoFailed = true;
+    } else {
+      photoFailed = true;
     }
   }
 
@@ -321,6 +396,11 @@ async function sendMedia(
   }
   if (videoFailed) {
     await ctx.reply("⚠️ Не удалось отправить видео. Откройте оригинал.", {
+      reply_markup: options.replyMarkup,
+    });
+  }
+  if (photoFailed) {
+    await ctx.reply("⚠️ Не удалось отправить фото. Откройте оригинал.", {
       reply_markup: options.replyMarkup,
     });
   }
@@ -429,6 +509,7 @@ function inputGroupMedia(
     width: item.width ?? undefined,
     height: item.height ?? undefined,
     duration: durationSeconds(item.durationMs) ?? undefined,
+    supports_streaming: true,
   };
 }
 

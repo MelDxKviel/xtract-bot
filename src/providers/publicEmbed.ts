@@ -335,6 +335,13 @@ function tweetFromPublicApi(
     authorName,
     authorUsername: username,
     authorUrl: publicApiAuthorUrl(data, username),
+    authorAvatarUrl:
+      firstStr(
+        firstDict(data, "author", "user") ?? {},
+        "avatar_url",
+        "profile_image_url_https",
+        "profile_image_url",
+      ) ?? firstStr(data, "user_avatar", "profile_image_url"),
     text: publicApiText(data),
     createdAt: publicApiDatetime(data),
     media: mediaFromPublicApi(data),
@@ -592,6 +599,7 @@ function tweetFromSyndication(
     authorName,
     authorUsername: username,
     authorUrl: canonicalAuthorUrl(username),
+    authorAvatarUrl: firstStr(user, "profile_image_url_https", "profile_image_url", "avatar_url"),
     text: textFromSyndication(payload),
     createdAt: parseDatetime(payload.created_at),
     media: mediaFromSyndication(payload),

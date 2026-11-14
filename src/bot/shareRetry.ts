@@ -10,9 +10,9 @@ import {
   type ParsedTweetUrl,
 } from "@/utils/urls";
 
-type RetryKind = "tweet" | "text" | "profile";
+type RetryKind = "tweet" | "text" | "profile" | "classic" | "classictext";
 type ShareRetry =
-  | { kind: "tweet" | "text"; parsed: ParsedTweetUrl }
+  | { kind: "tweet" | "text" | "classic" | "classictext"; parsed: ParsedTweetUrl }
   | { kind: "profile"; parsed: ParsedProfileUrl };
 
 const NON_RETRYABLE_ERRORS = new Set([
@@ -33,7 +33,10 @@ export function parseShareRetry(data: string | undefined): ShareRetry | null {
     const parsed = parseProfileUrl(`https://x.com/${target}`);
     return parsed ? { kind, parsed } : null;
   }
-  if ((kind === "tweet" || kind === "text") && /^[1-9]\d{0,19}$/.test(target)) {
+  if (
+    (kind === "tweet" || kind === "text" || kind === "classic" || kind === "classictext") &&
+    /^[1-9]\d{0,19}$/.test(target)
+  ) {
     const parsed = parseTweetUrl(`https://x.com/i/status/${target}`);
     return parsed ? { kind, parsed } : null;
   }

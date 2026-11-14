@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppContext } from "@/bot/context";
 import { privateComposer } from "@/bot/handlers/private";
 import { formatProfile } from "@/formatters/profile";
-import { formatTweet } from "@/formatters/telegram";
+import { formatThread, formatTweet } from "@/formatters/telegram";
+import { loadSettings } from "@/config";
 import { makeMedia, makeTweet, type TweetData } from "@/providers/base";
 import { makeProfile, type ProfileData } from "@/providers/profileBase";
 import type { ProfileShareResult, ProfileShareService } from "@/services/profileShare";
@@ -89,6 +90,7 @@ interface InjectConfig {
   result?: ShareResult;
   profileResult?: ProfileShareResult;
   isAdmin?: boolean;
+  widgets?: boolean;
   onProcess?: (text: string) => void;
 }
 
@@ -111,6 +113,11 @@ function inject(config: InjectConfig = {}): (ctx: AppContext) => void {
     },
   };
   return (ctx) => {
+    ctx.settings = loadSettings({
+      BOT_TOKEN: "12345:TEST",
+      DATABASE_URL: "postgres://localhost/test",
+      POST_WIDGETS_ENABLED: String(config.widgets ?? false),
+    });
     ctx.services = {
       access: { isAdmin: () => config.isAdmin ?? false },
       stats: {},
@@ -148,6 +155,141 @@ function harness(
 
 const TWEET_URL = "https://x.com/user/status/123";
 const PROFILE_URL = "https://x.com/user";
+
+describe("private HTML widget delivery", () => {
+  it("reports a missing photo in a partially delivered album", async () => {
+    const data = tweet({
+      media: [
+        makeMedia({ type: "photo", url: "https://cdn.test/ok.jpg" }),
+        makeMedia({ type: "photo", url: "https://cdn.test/fail.jpg" }),
+      ],
+    });
+    const h = harness(
+      { widgets: true, result: successResult({ tweet: data }) },
+      {
+        failCall: (call) =>
+          call.method === "sendMediaGroup" ||
+          (call.method === "sendPhoto" && call.payload.photo === "https://cdn.test/fail.jpg"),
+      },
+    );
+    await h.handle(privateText(TWEET_URL));
+    expect(h.callsTo("sendPhoto")).toHaveLength(2);
+    expect(h.lastCall("sendMessage")!.payload.text).toContain("Не удалось отправить фото");
+  });
+  it("sends a widget instead of duplicating the post as a rich message", async () => {
+    const h = harness({ widgets: true });
+    await h.handle(privateText(TWEET_URL));
+    expect(h.callsTo("sendWidget")).toHaveLength(1);
+    expect(h.callsTo("sendRichMessage")).toHaveLength(0);
+    const payload = h.lastCall("sendWidget")!.payload;
+    expect(payload.html).toContain("hello world");
+    expect(JSON.stringify(payload.reply_markup)).toContain("retry:classic:123");
+  });
+
+  it.each(["photo", "video", "gif"] as const)("keeps %s as a native file", async (type) => {
+    const data = tweet({ media: [makeMedia({ type, url: `https://cdn.test/${type}` })] });
+    const h = harness({ widgets: true, result: successResult({ tweet: data }) });
+    await h.handle(privateText(TWEET_URL));
+    expect(h.callsTo("sendWidget")).toHaveLength(1);
+    expect(
+      h.callsTo(type === "photo" ? "sendPhoto" : type === "gif" ? "sendAnimation" : "sendVideo"),
+    ).toHaveLength(1);
+  });
+
+  it("preserves thread, quote and mixed-album media in order beyond ten files", async () => {
+    const media = Array.from({ length: 12 }, (_, i) =>
+      makeMedia({
+        type: i === 1 ? "gif" : i === 2 ? "video" : "photo",
+        url: `https://cdn.test/${i}`,
+      }),
+    );
+    const data = tweet({
+      media,
+      quotedTweet: tweet({
+        tweetId: "456",
+        text: "quote",
+        media: [makeMedia({ type: "video", url: "https://cdn.test/quote.mp4" })],
+      }),
+    });
+    const post = formatThread([tweet(), data]);
+    const h = harness({
+      widgets: true,
+      result: successResult({ tweet: data, post, threadSize: 2 }),
+    });
+    await h.handle(privateText(TWEET_URL));
+    const albums = h
+      .callsTo("sendMediaGroup")
+      .map((call) => call.payload.media as Array<{ type: string; media: string }>);
+    expect(albums.map((album) => album.length)).toEqual([10, 2]);
+    expect(albums.flat().map((item) => item.media)).toEqual(media.map((item) => item.url));
+    expect(albums[0]![1]!.type).toBe("video");
+    expect(h.lastCall("sendVideo")!.payload.video).toBe("https://cdn.test/quote.mp4");
+  });
+
+  it("falls back to the full rich post when widgets are rejected", async () => {
+    const h = harness({ widgets: true }, { failMethods: ["sendWidget"] });
+    await h.handle(privateText(TWEET_URL));
+    expect(h.callsTo("sendWidget")).toHaveLength(1);
+    expect(h.callsTo("sendRichMessage")).toHaveLength(1);
+  });
+
+  it("uses the full original post when widget text exceeds its byte limit", async () => {
+    const data = tweet({ text: "длинный текст ".repeat(3000) + "FINAL WORD" });
+    const h = harness({ widgets: true, result: successResult({ tweet: data }) });
+    await h.handle(privateText(TWEET_URL));
+    expect(h.callsTo("sendWidget")).toHaveLength(0);
+    expect(JSON.stringify(h.lastCall("sendRichMessage")!.payload)).toContain("FINAL WORD");
+  });
+
+  it("can request a forwardable ordinary post without another widget", async () => {
+    const h = harness({ widgets: true });
+    await h.handle({
+      update_id: 2,
+      callback_query: {
+        id: "cb",
+        from: { id: 100, is_bot: false, first_name: "U" },
+        chat_instance: "chat",
+        data: "retry:classic:123",
+        message: { message_id: 1, date: 0, chat: { id: 100, type: "private" } },
+      },
+    });
+    expect(h.callsTo("answerCallbackQuery")).toHaveLength(1);
+    expect(h.callsTo("sendWidget")).toHaveLength(0);
+    expect(h.callsTo("sendRichMessage")).toHaveLength(1);
+  });
+
+  it("keeps /text and its ordinary-post callback free of all media", async () => {
+    const data = tweet({ media: [makeMedia({ type: "photo", url: "https://cdn.test/a.jpg" })] });
+    const h = harness({ widgets: true, result: successResult({ tweet: data }) });
+    await h.handle(privateText(`/text ${TWEET_URL}`, true));
+    expect(JSON.stringify(h.lastCall("sendWidget")!.payload.reply_markup)).toContain(
+      "retry:classictext:123",
+    );
+    expect(h.callsTo("sendPhoto")).toHaveLength(0);
+    expect(h.callsTo("sendMediaGroup")).toHaveLength(0);
+  });
+
+  it("retries rejected video URLs by uploading the actual file", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "video/mp4" } }),
+      ),
+    );
+    const data = tweet({
+      media: [makeMedia({ type: "video", url: "https://video.twimg.com/a.mp4" })],
+    });
+    const h = harness(
+      { widgets: true, result: successResult({ tweet: data }) },
+      { failCall: (call) => call.method === "sendVideo" && typeof call.payload.video === "string" },
+    );
+    await h.handle(privateText(TWEET_URL));
+    expect(h.callsTo("sendVideo")).toHaveLength(2);
+    expect(h.lastCall("sendVideo")!.payload.video).toBeInstanceOf(InputFile);
+    expect(h.callsTo("sendPhoto")).toHaveLength(0);
+  });
+});
 
 afterEach(() => vi.unstubAllGlobals());
 
